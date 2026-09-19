@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Synas Labs — Lead-to-Sale CRM
 
-## Getting Started
+WhatsApp-first, PKR-denominated, site-visit-driven sales OS for Pakistani real estate.
 
-First, run the development server:
+See [PRODUCT.md](./PRODUCT.md) for the product source of truth.
+See [SECURITY_REMEDIATION_REPORT.md](./SECURITY_REMEDIATION_REPORT.md) for the current security status.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Quick start (local demo)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Demo Mode is an explicit opt-in. Production fails closed unless `DEMO_MODE=true`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Ensure PostgreSQL is running and create DB `leadtosale_crm` (or update `DATABASE_URL` in `.env`).
+2. Copy `.env.example` to `.env`.
+3. Set `DEMO_MODE=true` and `DEMO_SEED_PASSWORD` to a local-only password you control.
+4. `npm install`
+5. `npx prisma generate`
+6. `npx prisma migrate deploy` (or `npx prisma db push` for local prototyping)
+7. `npm run db:seed`
+8. `npm run dev`
+9. Open http://localhost:3000 and sign in with the demo users created by seed. The password is the `DEMO_SEED_PASSWORD` you supplied — it is never shown in the UI or client bundle.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Scripts
 
-## Learn More
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` | Dev server |
+| `npm run build` | Production build |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint |
+| `npm test` | Security test suite |
+| `npm run db:seed` | Deterministic demo seed (`DEMO_MODE=true` required) |
+| `npm run db:reset` | Force-reset schema + reseed (local/demo only) |
+| `npx tsx scripts/e2e-core.ts` | Core E2E workflow (dev server + demo env required) |
 
-To learn more about Next.js, take a look at the following resources:
+## Demo Mode
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Calendar and WhatsApp use Demo Providers unless real credentials are configured. UI and API responses never claim a real external send/sync occurred.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Never enable `DEMO_MODE` on a production CRM that holds real customer data.

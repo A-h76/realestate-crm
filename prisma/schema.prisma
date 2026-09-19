@@ -1,0 +1,968 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  AGENT
+  VIEWER
+}
+
+enum PropertyType {
+  PLOT
+  HOUSE
+  APARTMENT
+  COMMERCIAL
+  AGRICULTURAL
+}
+
+enum PropertyPurpose {
+  SALE
+  RENT
+}
+
+enum PropertyStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+  RENTED
+  WITHDRAWN
+}
+
+enum SizeUnit {
+  MARLA
+  KANAL
+  SQFT
+  OTHER
+}
+
+enum ListingType {
+  EXCLUSIVE
+  OPEN
+  POCKET
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum Currency {
+  PKR
+  USD
+}
+
+enum LeadSource {
+  ZAMEEN
+  FACEBOOK_ADS
+  REFERRAL
+  WALK_IN
+  SIGNBOARD
+  WHATSAPP_INBOUND
+  COLD_CALL
+  EXISTING_CLIENT
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  QUALIFIED
+  NURTURING
+  CONVERTED
+  LOST
+  ARCHIVED
+}
+
+enum IntentType {
+  BUY
+  SELL
+  RENT
+  INVEST
+  UNKNOWN
+}
+
+enum DealSide {
+  BUYER
+  SELLER
+}
+
+enum ActivityType {
+  CALL
+  WHATSAPP_MESSAGE
+  EMAIL
+  SITE_VISIT
+  MEETING
+  NOTE
+  TASK
+  FOLLOW_UP
+  STAGE_CHANGE
+  SYSTEM
+}
+
+enum ActivityStatus {
+  PLANNED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  VIEWED
+  NEGOTIATION
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum CalendarEventType {
+  MEETING
+  SITE_VISIT
+  FOLLOW_UP
+  CALL
+  OTHER
+}
+
+enum CalendarEventStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum WhatsAppDirection {
+  INBOUND
+  OUTBOUND
+  SYSTEM
+}
+
+enum WhatsAppMessageStatus {
+  DRAFT
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum AuditAction {
+  LEAD_CREATED
+  LEAD_UPDATED
+  LEAD_STAGE_CHANGED
+  LEAD_ARCHIVED
+  ACCOUNT_CREATED
+  ACCOUNT_UPDATED
+  CONTACT_CREATED
+  CONTACT_UPDATED
+  PROPERTY_CREATED
+  PROPERTY_UPDATED
+  PROPERTY_STATUS_CHANGED
+  OPPORTUNITY_CREATED
+  OPPORTUNITY_UPDATED
+  OPPORTUNITY_STAGE_CHANGED
+  TASK_CREATED
+  TASK_UPDATED
+  TASK_COMPLETED
+  PROPOSAL_CREATED
+  PROPOSAL_SENT
+  PROPOSAL_VIEWED
+  PROPOSAL_UPDATED
+  CALENDAR_EVENT_CREATED
+  CALENDAR_EVENT_UPDATED
+  CALENDAR_EVENT_DELETED
+  WHATSAPP_MESSAGE_LOGGED
+  ACTIVITY_CREATED
+  DEMO_RESET
+  NOTE_CREATED
+  USER_LOGIN
+  AI_ANALYSIS_COMPLETED
+  SCORE_UPDATED
+  AUTOMATION_EXECUTED
+  AUTOMATION_FAILED
+  INTELLIGENCE_APPROVED
+  INTELLIGENCE_REJECTED
+  BRANDING_UPDATED
+  CSV_IMPORTED
+}
+
+enum IntelligenceKind {
+  LEAD_ANALYSIS
+  CALL_PREPARATION
+  SITE_VISIT_PREPARATION
+  FOLLOW_UP_DRAFT
+  EMAIL_DRAFT
+  LINKEDIN_DRAFT
+  OPPORTUNITY_SUMMARY
+  LOST_DEAL_ANALYSIS
+  PROPERTY_MATCH
+  PROPOSAL_SUMMARY
+}
+
+enum IntelligenceStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  APPROVED
+  REJECTED
+}
+
+enum AutomationTrigger {
+  LEAD_CREATED
+  LEAD_QUALIFIED
+  LEAD_SCORED_HIGH
+  STRONG_PROPERTY_MATCH
+  STAGE_CHANGED
+  PROPOSAL_SENT
+  SITE_VISIT_COMPLETED
+  LEAD_INACTIVE
+  PROPOSAL_VIEWED
+  AUTOMATION_FAILED
+}
+
+enum AutomationExecutionStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+  RUNNING
+}
+
+enum NotificationType {
+  FOLLOW_UP_OVERDUE
+  HIGH_VALUE_LEAD
+  PROPOSAL_VIEWED
+  SITE_VISIT_TOMORROW
+  OPPORTUNITY_STALLED
+  LEAD_SCORE_INCREASED
+  PROPERTY_MATCH_FOUND
+  AUTOMATION_FAILED
+  WHATSAPP_RECEIVED
+  TASK_CREATED
+  FOLLOW_UP_CREATED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  passwordHash  String
+  image         String?
+  phone         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  memberships       WorkspaceMember[]
+  ownedLeads        Lead[]            @relation("LeadOwner")
+  ownedAccounts     Account[]         @relation("AccountOwner")
+  ownedOpportunities Opportunity[]    @relation("OpportunityOwner")
+  ownedProperties   Property[]        @relation("PropertyAgent")
+  activities        Activity[]        @relation("ActivityOwner")
+  tasks             Task[]            @relation("TaskOwner")
+  calendarEvents    CalendarEvent[]   @relation("CalendarOwner")
+  whatsappMessages  WhatsAppMessage[] @relation("WhatsAppSender")
+  notes             Note[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  proposals         Proposal[]        @relation("ProposalOwner")
+}
+
+model Workspace {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  timezone    String    @default("Asia/Karachi")
+  currency    Currency  @default(PKR)
+  isDemo      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  branding               WorkspaceBranding?
+  members                WorkspaceMember[]
+  leads                  Lead[]
+  accounts               Account[]
+  contacts               Contact[]
+  properties             Property[]
+  pipelineStages         PipelineStage[]
+  opportunities          Opportunity[]
+  activities             Activity[]
+  tasks                  Task[]
+  proposals              Proposal[]
+  calendarEvents         CalendarEvent[]
+  whatsappMessages       WhatsAppMessage[]
+  notes                  Note[]
+  attachments            Attachment[]
+  notifications          Notification[]
+  auditLogs              AuditLog[]
+  intelligenceRuns       IntelligenceRun[]
+  scoreHistories         ScoreHistory[]
+  automations            Automation[]
+  automationExecutions   AutomationExecution[]
+  whatsAppIntegrations   WhatsAppIntegration[]
+  webhookEvents          WebhookEvent[]
+}
+
+model WorkspaceBranding {
+  id           String   @id @default(cuid())
+  workspaceId  String   @unique
+  companyName  String
+  displayName  String
+  logoUrl      String?
+  accentColor  String   @default("#0D9488")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(AGENT)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model PipelineStage {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  slug        String
+  order       Int
+  probability Int      @default(0)
+  active      Boolean  @default(true)
+  isWon       Boolean  @default(false)
+  isLost      Boolean  @default(false)
+  accentColor String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  opportunities Opportunity[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, order])
+}
+
+model Account {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  company      String
+  website      String?
+  industry     String?
+  companySize  String?
+  locationArea String?
+  city         String?
+  revenueRange String?
+  ownerId      String?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner         User?         @relation("AccountOwner", fields: [ownerId], references: [id])
+  contacts      Contact[]
+  leads         Lead[]
+  opportunities Opportunity[]
+  activities    Activity[]
+  tasks         Task[]
+  noteEntries   Note[]
+
+  @@index([workspaceId, deletedAt])
+  @@index([workspaceId, company])
+  @@index([ownerId])
+}
+
+model Contact {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  accountId      String?
+  firstName      String
+  lastName       String?
+  title          String?
+  email          String?
+  phone          String?
+  whatsappNumber String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  workspace             Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account               Account?       @relation(fields: [accountId], references: [id])
+  leads                 Lead[]
+  primaryOpportunities  Opportunity[]  @relation("OpportunityPrimaryContact")
+  ownedProperties       Property[]     @relation("PropertyOwnerContact")
+  activities            Activity[]
+  tasks                 Task[]
+  noteEntries           Note[]
+  calendarEvents        CalendarEvent[]
+  whatsappMessages      WhatsAppMessage[]
+
+  @@index([workspaceId, deletedAt])
+  @@index([accountId])
+  @@index([whatsappNumber])
+  @@index([workspaceId, phone])
+}
+
+model Property {
+  id                 String             @id @default(cuid())
+  workspaceId        String
+  title              String
+  description        String?
+  address            String?
+  area               String?
+  city               String             @default("Lahore")
+  propertyType       PropertyType
+  purpose            PropertyPurpose
+  size               Decimal?           @db.Decimal(12, 2)
+  sizeUnit           SizeUnit           @default(MARLA)
+  bedrooms           Int?
+  bathrooms          Int?
+  furnishedStatus    String?
+  price              Decimal            @db.Decimal(18, 2)
+  currency           Currency           @default(PKR)
+  status             PropertyStatus     @default(AVAILABLE)
+  listingType        ListingType        @default(OPEN)
+  ownerContactId     String?
+  assignedAgentId    String?
+  listingSource      String?
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  dateListed         DateTime           @default(now())
+  lastPriceUpdate    DateTime           @default(now())
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  deletedAt          DateTime?
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ownerContact  Contact?       @relation("PropertyOwnerContact", fields: [ownerContactId], references: [id])
+  assignedAgent User?          @relation("PropertyAgent", fields: [assignedAgentId], references: [id])
+  opportunities Opportunity[]
+  proposals     Proposal[]
+  tasks         Task[]
+  noteEntries   Note[]
+
+  @@index([workspaceId, deletedAt])
+  @@index([workspaceId, status])
+  @@index([workspaceId, area])
+  @@index([workspaceId, propertyType])
+  @@index([assignedAgentId])
+}
+
+model Lead {
+  id                   String          @id @default(cuid())
+  workspaceId          String
+  firstName            String
+  lastName             String?
+  company              String?
+  email                String?
+  phone                String?
+  whatsappNumber       String?
+  website              String?
+  industry             String?
+  companySize          String?
+  source               LeadSource      @default(WHATSAPP_INBOUND)
+  notes                String?
+  estimatedValue       Decimal?        @db.Decimal(18, 2)
+  currency             Currency        @default(PKR)
+  ownerId              String?
+  stage                LeadStage       @default(NEW)
+  accountId            String?
+  contactId            String?
+  intentType           IntentType      @default(UNKNOWN)
+  preferredArea        String?
+  budgetMin            Decimal?        @db.Decimal(18, 2)
+  budgetMax            Decimal?        @db.Decimal(18, 2)
+  propertyPurpose      PropertyPurpose?
+  propertyTypePref     PropertyType?
+  sizePrefMin          Decimal?        @db.Decimal(12, 2)
+  sizePrefMax          Decimal?        @db.Decimal(12, 2)
+  sizeUnitPref         SizeUnit?
+  bedroomPref          Int?
+  bathroomPref         Int?
+  furnishedPref        String?
+  timeline             String?
+  followUpDue          DateTime?
+  leadScore            Int             @default(0)
+  fitScore             Int             @default(0)
+  intentScore          Int             @default(0)
+  valueScore           Int             @default(0)
+  lastActivityAt       DateTime?
+  nextAction           String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  deletedAt            DateTime?
+
+  workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner             User?             @relation("LeadOwner", fields: [ownerId], references: [id])
+  account           Account?          @relation(fields: [accountId], references: [id])
+  contact           Contact?          @relation(fields: [contactId], references: [id])
+  opportunities     Opportunity[]
+  activities        Activity[]
+  tasks             Task[]
+  proposals         Proposal[]
+  calendarEvents    CalendarEvent[]
+  whatsappMessages  WhatsAppMessage[]
+  noteEntries       Note[]
+  intelligenceRuns  IntelligenceRun[]
+  scoreHistories    ScoreHistory[]
+
+  @@index([workspaceId, deletedAt])
+  @@index([workspaceId, stage])
+  @@index([workspaceId, source])
+  @@index([workspaceId, followUpDue])
+  @@index([ownerId])
+  @@index([whatsappNumber])
+  @@index([workspaceId, email])
+  @@index([workspaceId, phone])
+}
+
+model Opportunity {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  name              String
+  accountId         String?
+  primaryContactId  String?
+  leadId            String?
+  linkedPropertyId  String?
+  dealSide          DealSide
+  value             Decimal   @db.Decimal(18, 2)
+  currency          Currency  @default(PKR)
+  probability       Int       @default(0)
+  stageId           String
+  ownerId           String?
+  expectedCloseDate DateTime?
+  source            LeadSource?
+  description       String?
+  notes             String?
+  lostReason        String?
+  stageEnteredAt    DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account          Account?       @relation(fields: [accountId], references: [id])
+  primaryContact   Contact?       @relation("OpportunityPrimaryContact", fields: [primaryContactId], references: [id])
+  lead             Lead?          @relation(fields: [leadId], references: [id])
+  linkedProperty   Property?      @relation(fields: [linkedPropertyId], references: [id])
+  stage            PipelineStage  @relation(fields: [stageId], references: [id])
+  owner            User?          @relation("OpportunityOwner", fields: [ownerId], references: [id])
+  activities       Activity[]
+  tasks            Task[]
+  proposals        Proposal[]
+  calendarEvents   CalendarEvent[]
+  whatsappMessages WhatsAppMessage[]
+  noteEntries      Note[]
+  intelligenceRuns IntelligenceRun[]
+
+  @@index([workspaceId, deletedAt])
+  @@index([workspaceId, stageId])
+  @@index([workspaceId, dealSide])
+  @@index([ownerId])
+  @@index([leadId])
+  @@index([linkedPropertyId])
+}
+
+model Activity {
+  id            String         @id @default(cuid())
+  workspaceId   String
+  type          ActivityType
+  leadId        String?
+  opportunityId String?
+  accountId     String?
+  contactId     String?
+  ownerId       String?
+  date          DateTime       @default(now())
+  status        ActivityStatus @default(COMPLETED)
+  title         String?
+  notes         String?
+  metadata      Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead?        @relation(fields: [leadId], references: [id])
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
+  account     Account?     @relation(fields: [accountId], references: [id])
+  contact     Contact?     @relation(fields: [contactId], references: [id])
+  owner       User?        @relation("ActivityOwner", fields: [ownerId], references: [id])
+
+  @@index([workspaceId, date])
+  @@index([leadId, date])
+  @@index([opportunityId, date])
+  @@index([type])
+}
+
+model Task {
+  id            String       @id @default(cuid())
+  workspaceId   String
+  title         String
+  description   String?
+  status        TaskStatus   @default(TODO)
+  priority      TaskPriority @default(MEDIUM)
+  dueAt         DateTime?
+  completedAt   DateTime?
+  ownerId       String?
+  leadId        String?
+  opportunityId String?
+  accountId     String?
+  contactId     String?
+  propertyId    String?
+  proposalId    String?
+  siteVisitId   String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner       User?          @relation("TaskOwner", fields: [ownerId], references: [id])
+  lead        Lead?          @relation(fields: [leadId], references: [id])
+  opportunity Opportunity?   @relation(fields: [opportunityId], references: [id])
+  account     Account?       @relation(fields: [accountId], references: [id])
+  contact     Contact?       @relation(fields: [contactId], references: [id])
+  property    Property?      @relation(fields: [propertyId], references: [id])
+  proposal    Proposal?      @relation(fields: [proposalId], references: [id])
+  siteVisit   CalendarEvent? @relation(fields: [siteVisitId], references: [id])
+
+  @@index([workspaceId, status, dueAt])
+  @@index([ownerId, dueAt])
+  @@index([leadId])
+  @@index([opportunityId])
+}
+
+model Proposal {
+  id               String         @id @default(cuid())
+  workspaceId      String
+  proposalNumber   String
+  leadId           String?
+  opportunityId    String?
+  linkedPropertyId String?
+  value            Decimal        @db.Decimal(18, 2)
+  currency         Currency       @default(PKR)
+  status           ProposalStatus @default(DRAFT)
+  sentAt           DateTime?
+  viewedAt         DateTime?
+  viewCount        Int            @default(0)
+  expiryAt         DateTime?
+  attachmentUrl    String?
+  notes            String?
+  ownerId          String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead           Lead?        @relation(fields: [leadId], references: [id])
+  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id])
+  linkedProperty Property?    @relation(fields: [linkedPropertyId], references: [id])
+  owner          User?        @relation("ProposalOwner", fields: [ownerId], references: [id])
+  tasks          Task[]
+  attachments    Attachment[]
+
+  @@unique([workspaceId, proposalNumber])
+  @@index([workspaceId, status])
+  @@index([opportunityId])
+  @@index([leadId])
+}
+
+model CalendarEvent {
+  id               String              @id @default(cuid())
+  workspaceId      String
+  title            String
+  type             CalendarEventType   @default(MEETING)
+  status           CalendarEventStatus @default(SCHEDULED)
+  startAt          DateTime
+  endAt            DateTime
+  location         String?
+  notes            String?
+  ownerId          String?
+  leadId           String?
+  opportunityId    String?
+  contactId        String?
+  provider         String              @default("demo")
+  externalEventId  String?
+  metadata         Json?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  deletedAt        DateTime?
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner       User?        @relation("CalendarOwner", fields: [ownerId], references: [id])
+  lead        Lead?        @relation(fields: [leadId], references: [id])
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
+  contact     Contact?     @relation(fields: [contactId], references: [id])
+  tasks       Task[]
+
+  @@index([workspaceId, startAt])
+  @@index([ownerId, startAt])
+  @@index([leadId])
+  @@index([type, status])
+}
+
+model WhatsAppMessage {
+  id            String                @id @default(cuid())
+  workspaceId   String
+  conversationId String
+  direction     WhatsAppDirection
+  body          String
+  status        WhatsAppMessageStatus @default(SENT)
+  leadId        String?
+  opportunityId String?
+  contactId     String?
+  senderId      String?
+  provider      String                @default("demo")
+  externalId    String?
+  metadata      Json?
+  sentAt        DateTime              @default(now())
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead?        @relation(fields: [leadId], references: [id])
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
+  contact     Contact?     @relation(fields: [contactId], references: [id])
+  sender      User?        @relation("WhatsAppSender", fields: [senderId], references: [id])
+
+  @@unique([workspaceId, provider, externalId])
+  @@index([workspaceId, conversationId, sentAt])
+  @@index([leadId, sentAt])
+  @@index([opportunityId])
+  @@index([contactId])
+  @@index([externalId])
+}
+
+model Note {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  body          String
+  authorId      String?
+  leadId        String?
+  opportunityId String?
+  accountId     String?
+  contactId     String?
+  propertyId    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author      User?        @relation(fields: [authorId], references: [id])
+  lead        Lead?        @relation(fields: [leadId], references: [id])
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
+  account     Account?     @relation(fields: [accountId], references: [id])
+  contact     Contact?     @relation(fields: [contactId], references: [id])
+  property    Property?    @relation(fields: [propertyId], references: [id])
+
+  @@index([workspaceId, createdAt])
+  @@index([leadId])
+}
+
+model Attachment {
+  id          String   @id @default(cuid())
+  workspaceId String
+  fileName    String
+  fileUrl     String
+  mimeType    String?
+  sizeBytes   Int?
+  proposalId  String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  proposal  Proposal? @relation(fields: [proposalId], references: [id])
+
+  @@index([workspaceId])
+  @@index([proposalId])
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  workspaceId String
+  userId      String
+  type        NotificationType @default(TASK_CREATED)
+  title       String
+  body        String?
+  href        String?
+  entityType  String?
+  entityId    String?
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([workspaceId, type])
+}
+
+model IntelligenceRun {
+  id            String             @id @default(cuid())
+  workspaceId   String
+  kind          IntelligenceKind
+  model         String
+  promptVersion String
+  entityType    String
+  entityId      String
+  leadId        String?
+  opportunityId String?
+  inputSnapshot Json?
+  output        Json
+  confidence    Int?
+  status        IntelligenceStatus @default(COMPLETED)
+  reviewedById  String?
+  reviewedAt    DateTime?
+  createdAt     DateTime           @default(now())
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead?        @relation(fields: [leadId], references: [id])
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
+
+  @@index([workspaceId, kind, createdAt])
+  @@index([entityType, entityId])
+  @@index([leadId])
+  @@index([opportunityId])
+}
+
+model ScoreHistory {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  leadId        String
+  previousScore Int
+  newScore      Int
+  fitScore      Int
+  intentScore   Int
+  valueScore    Int
+  reason        String
+  signals       Json?
+  createdAt     DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([leadId, createdAt])
+}
+
+model Automation {
+  id          String            @id @default(cuid())
+  workspaceId String
+  name        String
+  trigger     AutomationTrigger
+  enabled     Boolean           @default(true)
+  paused      Boolean           @default(false)
+  conditions  Json?
+  actions     Json
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  workspace  Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  executions AutomationExecution[]
+
+  @@index([workspaceId, trigger, enabled])
+}
+
+model AutomationExecution {
+  id            String                     @id @default(cuid())
+  workspaceId   String
+  automationId  String
+  trigger       AutomationTrigger
+  leadId        String?
+  opportunityId String?
+  action        String
+  result        String?
+  durationMs    Int?
+  error         String?
+  retryCount    Int                        @default(0)
+  status        AutomationExecutionStatus  @default(RUNNING)
+  createdAt     DateTime                   @default(now())
+
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([automationId, createdAt])
+  @@index([status])
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  workspaceId String
+  actorId     String?
+  action      AuditAction
+  entity      String
+  entityId    String
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     User?     @relation(fields: [actorId], references: [id])
+
+  @@index([workspaceId, createdAt])
+  @@index([entity, entityId])
+  @@index([action])
+}
+
+model WhatsAppIntegration {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  phoneNumberId String   @unique
+  displayPhone  String?
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model WebhookEvent {
+  id              String   @id @default(cuid())
+  provider        String
+  externalEventId String
+  workspaceId     String?
+  createdAt       DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalEventId])
+  @@index([workspaceId, createdAt])
+}
+
+model RateLimitBucket {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+}
