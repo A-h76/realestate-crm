@@ -20,12 +20,14 @@ import {
   Sparkles,
   Workflow,
   BarChart3,
+  Rocket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { initials } from "@/lib/dashboard-ui";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/golden-path", label: "Golden Path", icon: Rocket },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/opportunities", label: "Opportunities", icon: Target },
   { href: "/pipeline", label: "Pipeline", icon: Kanban },
@@ -200,6 +202,7 @@ export type SearchHit = {
 };
 
 const COMMANDS = [
+  { href: "/golden-path", label: "Run Golden Path", hint: "Lead-to-sale demo" },
   { href: "/leads", label: "Create Lead", hint: "Open leads" },
   { href: "/opportunities", label: "Create Opportunity" },
   { href: "/properties", label: "Create Property" },

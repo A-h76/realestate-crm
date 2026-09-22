@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type WhatsAppMessageStatus } from "@prisma/client";
 import { ApiError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications";
@@ -6,6 +6,15 @@ import { writeAudit } from "@/lib/audit";
 import { normalizePkPhone } from "@/lib/format";
 import { verifyHubSignature256 } from "@/lib/security/hmac";
 import { measureExecution } from "@/lib/perf";
+import { createLead } from "@/lib/leads/create-lead";
+import {
+  applyRequirementUpdate,
+  extractRequirement,
+  type RequirementSnapshot,
+} from "@/lib/whatsapp/extract-requirement";
+import { detectHandoff } from "@/lib/whatsapp/detect-handoff";
+import { triggerHandoff } from "@/lib/whatsapp/handoff-event";
+import { runConversationTurn } from "@/lib/whatsapp/conversation-orchestrator";
 
 type CloudMessage = {
   from?: string;
@@ -26,7 +35,7 @@ type CloudPayload = {
         metadata?: { phone_number_id?: string; display_phone_number?: string };
         contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
         messages?: CloudMessage[];
-        statuses?: Array<{ id?: string }>;
+        statuses?: Array<{ id?: string; status?: string }>;
       };
     }>;
   }>;
@@ -57,13 +66,37 @@ async function resolveWorkspaceId(phoneNumberId: string): Promise<string | null>
   return null;
 }
 
+const META_STATUS_MAP: Record<string, WhatsAppMessageStatus> = {
+  sent: "SENT",
+  delivered: "DELIVERED",
+  read: "READ",
+  failed: "FAILED",
+};
+
+/** Meta delivery-status webhook (sent/delivered/read/failed) for an outbound message we sent. */
+async function applyStatusUpdate(workspaceId: string, status: { id?: string; status?: string }) {
+  if (!status.id || !status.status) return;
+  const mapped = META_STATUS_MAP[status.status];
+  if (!mapped) return;
+  await measureExecution("webhook.status", () =>
+    prisma.whatsAppMessage.updateMany({
+      where: { workspaceId, provider: "whatsapp-business", externalId: status.id, direction: "OUTBOUND" },
+      data: { status: mapped },
+    }),
+  );
+}
+
 async function storeInboundMessage(input: {
   workspaceId: string;
   phone: string;
   body: string;
   externalId: string;
+  profileName: string | null;
+  /** false for non-text message types: skip requirement extraction and handoff detection on the placeholder body. */
+  extractable: boolean;
+  metadata?: Record<string, unknown>;
 }): Promise<"created" | "duplicate"> {
-  const [lead, contact] = await measureExecution("webhook.lookups", () =>
+  const [existingLead, contact] = await measureExecution("webhook.lookups", () =>
     Promise.all([
       prisma.lead.findFirst({
         where: {
@@ -71,7 +104,20 @@ async function storeInboundMessage(input: {
           deletedAt: null,
           OR: [{ whatsappNumber: input.phone }, { phone: input.phone }],
         },
-        select: { id: true, ownerId: true },
+        select: {
+          id: true,
+          ownerId: true,
+          propertyPurpose: true,
+          propertyTypePref: true,
+          intentType: true,
+          preferredArea: true,
+          budgetMin: true,
+          budgetMax: true,
+          sizePrefMin: true,
+          sizePrefMax: true,
+          sizeUnitPref: true,
+          bedroomPref: true,
+        },
       }),
       prisma.contact.findFirst({
         where: {
@@ -83,7 +129,45 @@ async function storeInboundMessage(input: {
       }),
     ]),
   );
-  const conversationId = lead ? `lead:${lead.id}` : `wa:${input.phone}`;
+
+  const extracted = input.extractable ? extractRequirement(input.body) : {};
+  let lead: { id: string; ownerId: string | null };
+  let previousMessage: string | null = null;
+
+  if (existingLead) {
+    lead = existingLead;
+    const [, prevMessage] = await Promise.all([
+      applyRequirementUpdate(
+        input.workspaceId,
+        existingLead.id,
+        existingLead as unknown as RequirementSnapshot,
+        extracted,
+      ),
+      prisma.whatsAppMessage.findFirst({
+        where: { workspaceId: input.workspaceId, leadId: existingLead.id, direction: "INBOUND" },
+        orderBy: { sentAt: "desc" },
+        select: { body: true },
+      }),
+    ]);
+    previousMessage = prevMessage?.body ?? null;
+  } else {
+    const [firstName, ...rest] = (
+      input.profileName?.trim() || `WhatsApp Lead ${input.phone.slice(-4)}`
+    ).split(/\s+/);
+    const created = await measureExecution("webhook.createLead", () =>
+      createLead(input.workspaceId, null, {
+        firstName,
+        lastName: rest.join(" ") || null,
+        phone: input.phone,
+        whatsappNumber: input.phone,
+        source: "WHATSAPP_INBOUND",
+        ...extracted,
+      }),
+    );
+    lead = created;
+  }
+
+  const conversationId = `lead:${lead.id}`;
 
   try {
     const row = await measureExecution("webhook.persist", () =>
@@ -106,7 +190,7 @@ async function storeInboundMessage(input: {
             contactId: contact?.id,
             provider: "whatsapp-business",
             externalId: input.externalId,
-            metadata: { webhook: true },
+            metadata: { webhook: true, ...input.metadata },
           },
           select: { id: true },
         });
@@ -134,6 +218,34 @@ async function storeInboundMessage(input: {
           entityId: lead.id,
         }),
       );
+    }
+
+    if (input.extractable) {
+      const detection = detectHandoff(input.body, { previousMessage });
+      if (detection.shouldHandoff) {
+        await measureExecution("webhook.handoff", () =>
+          triggerHandoff({
+            workspaceId: input.workspaceId,
+            leadId: lead.id,
+            detection,
+            triggerMessage: input.body,
+            triggerMessageId: row.id,
+          }),
+        );
+      } else {
+        // Only a non-handoff customer message ever reaches the automatic
+        // conversational reply — never re-entered by our own outbound sends
+        // or by Meta status callbacks, which are handled separately above.
+        await measureExecution("webhook.conversation", () =>
+          runConversationTurn({
+            workspaceId: input.workspaceId,
+            leadId: lead.id,
+            conversationId,
+            messageId: row.id,
+            message: input.body,
+          }),
+        );
+      }
     }
     return "created";
   } catch (error) {
@@ -187,10 +299,14 @@ export async function processWhatsAppWebhook(
 
   for (const change of changes) {
     const messages = change.value?.messages ?? [];
+    const contactsByWaId = new Map(
+      (change.value?.contacts ?? []).map((c) => [c.wa_id, c.profile?.name ?? null]),
+    );
     for (const msg of messages) {
       if (!msg.from || !msg.id) continue;
-      const body = msg.text?.body;
-      if (!body) continue;
+      const text = msg.type === "text" ? msg.text?.body?.trim() : undefined;
+      const extractable = Boolean(text);
+      const body = extractable ? text! : `[Unsupported WhatsApp message: ${msg.type ?? "unknown"}]`;
 
       const phone = normalizePkPhone(msg.from) ?? `+${msg.from.replace(/[^\d]/g, "")}`;
       const result = await storeInboundMessage({
@@ -198,9 +314,16 @@ export async function processWhatsAppWebhook(
         phone,
         body,
         externalId: msg.id,
+        profileName: contactsByWaId.get(msg.from) ?? null,
+        extractable,
+        metadata: extractable ? undefined : { unsupportedType: msg.type ?? "unknown" },
       });
       if (result === "created") stored += 1;
       else duplicates += 1;
+    }
+
+    for (const status of change.value?.statuses ?? []) {
+      await applyStatusUpdate(workspaceId, status);
     }
   }
 

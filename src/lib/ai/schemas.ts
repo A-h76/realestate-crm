@@ -82,6 +82,43 @@ export const proposalSummarySchema = z.object({
   followUp: z.string(),
 });
 
+/**
+ * Structured output contract for AI-assisted WhatsApp requirement extraction
+ * (src/lib/whatsapp/conversation-intelligence.ts). Only used when the
+ * deterministic extractor (extract-requirement.ts) finds nothing in an
+ * ambiguous message. The model may only ever populate requirement fields —
+ * never property facts (price, availability, owner, etc.) — those stay
+ * grounded in the database.
+ */
+export const conversationAssistSchema = z.object({
+  intent: z.enum([
+    "GREETING",
+    "PROPERTY_REQUIREMENT",
+    "PROPERTY_PRICE",
+    "PROPERTY_LOCATION",
+    "PROPERTY_PHOTOS",
+    "PROPERTY_AVAILABILITY",
+    "CONFIRMATION",
+    "UNKNOWN",
+  ]),
+  extractedRequirements: z
+    .object({
+      propertyPurpose: z.enum(["SALE", "RENT"]).nullable().optional(),
+      propertyTypePref: z.enum(["PLOT", "HOUSE", "APARTMENT", "COMMERCIAL", "AGRICULTURAL"]).nullable().optional(),
+      preferredArea: z.string().max(80).nullable().optional(),
+      budgetMin: z.number().nonnegative().nullable().optional(),
+      budgetMax: z.number().nonnegative().nullable().optional(),
+      sizePrefMin: z.number().nonnegative().nullable().optional(),
+      sizePrefMax: z.number().nonnegative().nullable().optional(),
+      sizeUnitPref: z.enum(["MARLA", "KANAL", "SQFT", "OTHER"]).nullable().optional(),
+      bedroomPref: z.number().int().nonnegative().nullable().optional(),
+    })
+    .partial(),
+  confidence: z.enum(["HIGH", "MEDIUM", "LOW"]),
+});
+
+export type ConversationAssistOutput = z.infer<typeof conversationAssistSchema>;
+
 export type LeadAnalysis = z.infer<typeof leadAnalysisSchema>;
 export type CallPreparation = z.infer<typeof callPreparationSchema>;
 export type SiteVisitPreparation = z.infer<typeof siteVisitPreparationSchema>;

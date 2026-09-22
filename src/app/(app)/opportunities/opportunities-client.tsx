@@ -40,15 +40,18 @@ export function OpportunitiesClient({
   stages,
   leads,
   properties,
+  prefillLeadId,
 }: {
   initialOpportunities: OpportunityListItem[];
   stages: StageOption[];
   leads: LeadOption[];
   properties: PropertyOption[];
+  /** Arrived via /opportunities?leadId=... (e.g. the Lead page's "Start the first property opportunity" link) — opens the create form pre-pointed at that lead. */
+  prefillLeadId?: string | null;
 }) {
   const router = useRouter();
   const [opps, setOpps] = useState(initialOpportunities);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(Boolean(prefillLeadId));
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -56,7 +59,7 @@ export function OpportunitiesClient({
     dealSide: "BUYER" as "BUYER" | "SELLER",
     value: "",
     stageId: stages[0]?.id ?? "",
-    leadId: "",
+    leadId: prefillLeadId ?? "",
     linkedPropertyId: "",
     description: "",
   });

@@ -25,6 +25,7 @@ export class DemoWhatsAppProvider implements WhatsAppProvider {
         externalId: `demo-wa-${crypto.randomUUID()}`,
         metadata: {
           demoNotice: "Demo WhatsApp message generated. No real WhatsApp message was sent.",
+          ...input.metadata,
         },
       },
     });

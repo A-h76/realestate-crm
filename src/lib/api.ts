@@ -7,6 +7,9 @@ import { ApiError } from "@/lib/errors";
 import { roleHasPermission, type Permission } from "@/lib/authz";
 import { enforceRateLimit, type RateLimitSpec } from "@/lib/rate-limit";
 import { getRequestId, measureExecution } from "@/lib/perf";
+import { logSecurityEvent } from "@/lib/security/log";
+
+const SECURITY_TRACE_STATUSES = new Set([401, 403, 429]);
 
 export { ApiError };
 
@@ -100,6 +103,9 @@ export function jsonOk<T>(data: T, status = 200) {
 
 export function jsonError(error: unknown) {
   if (error instanceof ApiError) {
+    if (SECURITY_TRACE_STATUSES.has(error.status)) {
+      logSecurityEvent({ status: error.status, message: error.message });
+    }
     return NextResponse.json(
       { error: error.message },
       { status: error.status, headers: requestIdHeaders(error.headers) },

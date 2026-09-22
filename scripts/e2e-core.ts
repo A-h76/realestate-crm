@@ -131,6 +131,13 @@ async function main() {
     stageId: stageBySlug.qualified.id,
   });
 
+  console.log("E2E: assign lead to least-loaded agent…");
+  const assignment = await api(cookieHeader, "POST", `/api/leads/${lead.id}/assign`);
+  if (!assignment.assignment?.agentId) throw new Error("Assignment did not return an agentId");
+  if (assignment.lead.ownerId !== assignment.assignment.agentId) {
+    throw new Error("Lead ownerId not updated to assigned agent");
+  }
+
   console.log("E2E: analyze + match + score + draft…");
   const analysis = await api(cookieHeader, "POST", "/api/intelligence", {
     kind: "LEAD_ANALYSIS",
@@ -221,6 +228,14 @@ async function main() {
     throw new Error("Expected automation executions after stage/proposal events");
   }
 
+  console.log("E2E: simulate proposal acceptance…");
+  const accepted = await api(cookieHeader, "PATCH", `/api/proposals/${proposal.id}`, {
+    status: "ACCEPTED",
+  });
+  if (accepted.status !== "ACCEPTED") throw new Error("Proposal did not move to ACCEPTED");
+
+  const dashboardBefore = await api(cookieHeader, "GET", "/api/dashboard");
+
   console.log("E2E: move to Won…");
   await api(cookieHeader, "PATCH", `/api/opportunities/${opp.id}`, {
     stageId: stageBySlug.won.id,
@@ -231,6 +246,11 @@ async function main() {
     include: { stage: true },
   });
   if (!wonOpp?.stage.isWon) throw new Error("Opportunity not in Won stage");
+
+  const dashboardAfter = await api(cookieHeader, "GET", "/api/dashboard");
+  if (!(dashboardAfter.metrics.wonRevenue > dashboardBefore.metrics.wonRevenue)) {
+    throw new Error("Dashboard wonRevenue did not increase after opportunity moved to Won");
+  }
 
   const audits = await prisma.auditLog.count({
     where: {
@@ -251,6 +271,9 @@ async function main() {
     opportunityId: opp.id,
     proposalId: proposal.id,
     calendarEventId: cal.id,
+    assignedAgentId: assignment.assignment.agentId,
+    wonRevenueBefore: dashboardBefore.metrics.wonRevenue,
+    wonRevenueAfter: dashboardAfter.metrics.wonRevenue,
     auditHits: audits,
     activityHits: activities,
     followUpTasks: tasksAfterSend,

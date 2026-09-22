@@ -4,6 +4,7 @@ WhatsApp-first, PKR-denominated, site-visit-driven sales OS for Pakistani real e
 
 See [PRODUCT.md](./PRODUCT.md) for the product source of truth.
 See [SECURITY_REMEDIATION_REPORT.md](./SECURITY_REMEDIATION_REPORT.md) for the current security status.
+See [DISASTER_RECOVERY.md](./DISASTER_RECOVERY.md) for backup verification, restore procedure, and health check details.
 
 ## Quick start (local demo)
 

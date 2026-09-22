@@ -206,6 +206,7 @@ enum AuditAction {
   INTELLIGENCE_REJECTED
   BRANDING_UPDATED
   CSV_IMPORTED
+  HANDOFF_TRIGGERED
 }
 
 enum IntelligenceKind {
@@ -261,6 +262,7 @@ enum NotificationType {
   WHATSAPP_RECEIVED
   TASK_CREATED
   FOLLOW_UP_CREATED
+  HUMAN_HANDOFF_REQUIRED
 }
 
 model User {

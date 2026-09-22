@@ -7,7 +7,7 @@ import { ActivityTimeline } from "@/components/activity-timeline";
 import { LeadIntelligencePanel } from "@/components/intelligence/lead-intelligence";
 import { PageHeader, SectionHeading } from "@/components/page-header";
 import { SourceName } from "@/components/source-name";
-import { Badge } from "@/components/ui/badge";
+import { LeadStageControl } from "@/components/leads/lead-stage-control";
 import { WhatsAppThread } from "@/components/whatsapp/whatsapp-thread";
 import { formatCurrency, formatDatePK, formatDateTimePK, formatPKR } from "@/lib/format";
 import { filterAndScoreProperties } from "@/lib/matching/properties";
@@ -102,7 +102,7 @@ export default async function LeadDetailPage({
         description={[lead.company, lead.preferredArea, lead.intentType].filter(Boolean).join(" · ") || undefined}
         actions={
           <>
-            <Badge tone="neutral">{lead.stage}</Badge>
+            <LeadStageControl leadId={lead.id} stage={lead.stage} />
             <SourceName source={lead.source} />
           </>
         }
@@ -209,7 +209,9 @@ export default async function LeadDetailPage({
           <section>
             <SectionHeading>Opportunities</SectionHeading>
             {lead.opportunities.length === 0 ? (
-              <p className="text-sm text-muted">Start the first property opportunity from this lead.</p>
+              <Link href={`/opportunities?leadId=${lead.id}`} className="text-sm text-accent hover:underline">
+                Start the first property opportunity from this lead
+              </Link>
             ) : (
               <div className="divide-y divide-border">
                 {lead.opportunities.map((opp) => (

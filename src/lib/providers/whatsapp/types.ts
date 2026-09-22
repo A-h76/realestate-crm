@@ -11,6 +11,8 @@ export type WhatsAppSendInput = {
   opportunityId?: string | null;
   senderId?: string | null;
   status?: WhatsAppMessageStatus;
+  /** Merged into the stored message's metadata (e.g. tagging an automated conversational reply with its decision). */
+  metadata?: Record<string, unknown> | null;
 };
 
 export type WhatsAppDraftInput = WhatsAppSendInput;

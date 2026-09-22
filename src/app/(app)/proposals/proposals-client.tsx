@@ -119,6 +119,9 @@ export function ProposalsClient({
     );
     if (status === "SENT") setNotice("Proposal marked SENT. Follow-up task created.");
     if (status === "VIEWED") setNotice("Proposal marked VIEWED.");
+    if (status === "ACCEPTED") {
+      setNotice("Simulated acceptance recorded — not a real client e-signature.");
+    }
   }
 
   return (
@@ -197,6 +200,16 @@ export function ProposalsClient({
                     {p.status === "SENT" || p.status === "VIEWED" ? (
                       <Button size="sm" variant="ghost" onClick={() => patchStatus(p.id, "VIEWED")}>
                         Mark viewed
+                      </Button>
+                    ) : null}
+                    {p.status === "SENT" || p.status === "VIEWED" || p.status === "NEGOTIATION" ? (
+                      <Button
+                        size="sm"
+                        variant="accent"
+                        title="Demo action — does not represent a real client e-signature."
+                        onClick={() => patchStatus(p.id, "ACCEPTED")}
+                      >
+                        Simulate acceptance
                       </Button>
                     ) : null}
                   </div>

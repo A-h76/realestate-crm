@@ -42,3 +42,9 @@ next-env.d.ts
 
 # local performance harness output
 scripts/perf-http-results.json
+
+# database dumps (never commit prod backups)
+*.dump
+
+# Claude Code local session/plugin data
+/.claude/

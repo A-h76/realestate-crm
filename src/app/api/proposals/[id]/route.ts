@@ -54,6 +54,7 @@ export const PATCH = measuredRoute("PATCH /api/proposals/:id", async (request: R
     const becomingSent = body.status === "SENT" && existing.status !== "SENT";
     const becomingViewed = body.status === "VIEWED";
     const firstViewed = becomingViewed && existing.status !== "VIEWED";
+    const becomingAccepted = body.status === "ACCEPTED" && existing.status !== "ACCEPTED";
 
     const updated = await prisma.proposal.updateMany({
       where: { id, workspaceId, deletedAt: null },
@@ -109,6 +110,19 @@ export const PATCH = measuredRoute("PATCH /api/proposals/:id", async (request: R
         opportunityId: proposal.opportunityId,
         payload: { proposalId: proposal.id, proposalNumber: proposal.proposalNumber },
       });
+    } else if (becomingAccepted) {
+      await writeAudit({
+        workspaceId,
+        actorId: userId,
+        action: "PROPOSAL_UPDATED",
+        entity: "Proposal",
+        entityId: proposal.id,
+        metadata: {
+          fields: ["status"],
+          acceptedVia: "demo_simulation",
+          demoNotice: "Simulated acceptance — not a real client e-signature.",
+        },
+      });
     } else {
       await writeAudit({
         workspaceId,
@@ -120,7 +134,13 @@ export const PATCH = measuredRoute("PATCH /api/proposals/:id", async (request: R
       });
     }
 
-    return jsonOk(proposal);
+    return jsonOk({
+      ...proposal,
+      demo: becomingAccepted ? true : undefined,
+      notice: becomingAccepted
+        ? "Simulated acceptance recorded — not a real client e-signature."
+        : undefined,
+    });
   } catch (error) {
     return jsonError(error);
   }

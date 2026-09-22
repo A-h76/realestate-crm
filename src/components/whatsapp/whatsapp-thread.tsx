@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDateTimePK, formatTimePK } from "@/lib/format";
+import type { CrmEvent } from "@/lib/whatsapp/inbox-list";
 import { cn } from "@/lib/utils";
 
 type WhatsAppMessage = {
@@ -16,14 +18,25 @@ type WhatsAppMessage = {
   sender?: { name?: string | null } | null;
 };
 
+type TimelineItem =
+  | { kind: "message"; at: string; message: WhatsAppMessage }
+  | { kind: "crm"; at: string; event: CrmEvent };
+
 export function WhatsAppThread({
   leadId,
   conversationId,
+  crmEvents = [],
+  fill = false,
 }: {
   leadId: string;
   conversationId: string;
+  crmEvents?: CrmEvent[];
+  /** Fill the parent's height (used by the Inbox's bounded 3-pane layout) instead of the fixed-height card used elsewhere. */
+  fill?: boolean;
 }) {
+  const router = useRouter();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
+  const [isDemo, setIsDemo] = useState(true);
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -41,6 +54,7 @@ export function WhatsAppThread({
       }
       const data = await res.json();
       setMessages(Array.isArray(data) ? data : (data.messages ?? []));
+      if (typeof data.isDemo === "boolean") setIsDemo(data.isDemo);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load conversation");
     } finally {
@@ -52,9 +66,17 @@ export function WhatsAppThread({
     void load();
   }, [load]);
 
+  const timeline = useMemo<TimelineItem[]>(() => {
+    const items: TimelineItem[] = [
+      ...messages.map((message) => ({ kind: "message" as const, at: message.sentAt, message })),
+      ...crmEvents.map((event) => ({ kind: "crm" as const, at: event.at, event })),
+    ];
+    return items.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  }, [messages, crmEvents]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [timeline.length]);
 
   async function sendMessage() {
     if (!body.trim() || sending) return;
@@ -75,8 +97,9 @@ export function WhatsAppThread({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Failed to send");
       setBody("");
-      setNotice("Demo WhatsApp message generated");
+      setNotice(data.notice ?? (data.demo ? "Demo WhatsApp message generated." : "Message sent."));
       await load();
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send");
     } finally {
@@ -100,8 +123,9 @@ export function WhatsAppThread({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Failed to simulate inbound");
-      setNotice("Demo inbound WhatsApp message generated");
+      setNotice(data.notice ?? "Simulated inbound Demo WhatsApp message.");
       await load();
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to simulate inbound");
     } finally {
@@ -110,22 +134,45 @@ export function WhatsAppThread({
   }
 
   return (
-    <div className="border border-border bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+    <div className={cn("flex flex-col border border-border bg-surface", fill ? "h-full" : "")}>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div>
           <h3 className="text-sm font-medium tracking-tight">WhatsApp</h3>
-          <p className="mt-0.5 text-xs text-muted">Tied to this lead · demo send never leaves the CRM</p>
+          <p className="mt-0.5 text-xs text-muted">
+            {isDemo ? "Tied to this lead · demo send never leaves the CRM" : "Tied to this lead · WhatsApp Business"}
+          </p>
         </div>
-        <Badge tone="accent">Demo</Badge>
+        <Badge tone={isDemo ? "accent" : "success"}>{isDemo ? "Demo" : "Live"}</Badge>
       </div>
 
-      <div className="flex max-h-[420px] min-h-[240px] flex-col gap-3 overflow-y-auto py-4">
+      <div
+        className={cn(
+          "flex min-h-[240px] flex-col gap-3 overflow-y-auto py-4",
+          fill ? "flex-1" : "max-h-[420px]",
+        )}
+      >
         {loading ? (
           <div className="py-10 text-center text-sm text-muted">Loading conversation…</div>
-        ) : messages.length === 0 ? (
+        ) : timeline.length === 0 ? (
           <div className="py-10 text-center text-sm text-muted">No messages yet.</div>
         ) : (
-          messages.map((msg) => {
+          timeline.map((item) => {
+            if (item.kind === "crm") {
+              return (
+                <div key={item.event.id} className="mx-auto max-w-[85%] text-center">
+                  <div className="inline-block border border-border bg-background px-3 py-1.5 text-left">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">CRM event</div>
+                    <div className="mt-0.5 text-[12px] font-medium">{item.event.title}</div>
+                    {item.event.detail ? (
+                      <div className="mt-0.5 text-[11px] text-muted">{item.event.detail}</div>
+                    ) : null}
+                  </div>
+                  <div className="mono mt-1 text-[10px] text-muted">{formatDateTimePK(item.at)}</div>
+                </div>
+              );
+            }
+
+            const msg = item.message;
             const outbound = msg.direction === "OUTBOUND";
             const system = msg.direction === "SYSTEM";
             if (system) {
@@ -151,7 +198,10 @@ export function WhatsAppThread({
                       : "border border-border bg-background px-3 py-2 text-sm",
                   )}
                 >
-                  <p className="whitespace-pre-wrap break-words">{msg.body}</p>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
+                    {outbound ? "Agent" : "Customer"}
+                  </div>
+                  <p className="mt-0.5 whitespace-pre-wrap break-words">{msg.body}</p>
                   <div className="mono mt-1 flex items-center justify-end gap-2 text-[10px] text-muted">
                     <span>{formatTimePK(msg.sentAt)}</span>
                     {outbound ? <span>{msg.status}</span> : null}
@@ -167,7 +217,7 @@ export function WhatsAppThread({
       {(notice || error) && (
         <div
           className={cn(
-            "border-t border-border px-4 py-2 text-xs",
+            "shrink-0 border-t border-border px-4 py-2 text-xs",
             error ? "bg-red-50 text-danger" : "bg-accent-soft text-foreground",
           )}
         >
@@ -175,11 +225,11 @@ export function WhatsAppThread({
         </div>
       )}
 
-      <div className="space-y-2 border-t border-border p-3">
+      <div className="shrink-0 space-y-2 border-t border-border p-3">
         <Textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          placeholder="Type a demo WhatsApp message…"
+          placeholder={isDemo ? "Type a demo WhatsApp message…" : "Type a WhatsApp message…"}
           rows={2}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -190,11 +240,13 @@ export function WhatsAppThread({
         />
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="accent" size="sm" disabled={sending || !body.trim()} onClick={() => void sendMessage()}>
-            Send demo message
+            {isDemo ? "Send demo message" : "Send message"}
           </Button>
-          <Button type="button" variant="outline" size="sm" disabled={sending} onClick={() => void simulateInbound()}>
-            Simulate inbound
-          </Button>
+          {isDemo ? (
+            <Button type="button" variant="outline" size="sm" disabled={sending} onClick={() => void simulateInbound()}>
+              Simulate inbound
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>

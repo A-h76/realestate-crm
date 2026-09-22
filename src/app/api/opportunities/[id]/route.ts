@@ -3,6 +3,7 @@ import { writeAudit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { assertRelationsInWorkspace, touchLeadActivity } from "@/lib/tenant";
+import { convertLeadOnOpportunityWon } from "@/lib/leads/convert-on-won";
 import { emptyToNull } from "@/lib/validations/helpers";
 import { parseBody } from "@/lib/validations/common";
 import {
@@ -96,6 +97,15 @@ async function applyStageChange(input: {
 
   if (input.leadId) {
     await touchLeadActivity(input.workspaceId, input.leadId, now);
+
+    if (stage.isWon) {
+      await convertLeadOnOpportunityWon({
+        workspaceId: input.workspaceId,
+        actorId: input.userId,
+        leadId: input.leadId,
+        opportunityId: opportunity.id,
+      });
+    }
   }
 
   await runAutomations({

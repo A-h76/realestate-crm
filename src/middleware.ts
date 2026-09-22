@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { applySecurityHeaders } from "@/lib/security/headers";
 import { createRequestId } from "@/lib/perf";
 
-const PUBLIC_PATHS = new Set(["/login"]);
+const PUBLIC_PATHS = new Set(["/login", "/api/health"]);
 const PUBLIC_PREFIXES = ["/api/auth", "/api/webhooks/whatsapp"];
 
 function isPublic(pathname: string) {

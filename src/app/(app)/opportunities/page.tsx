@@ -3,10 +3,15 @@ import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
 import { OpportunitiesClient } from "./opportunities-client";
 
-export default async function OpportunitiesPage() {
+export default async function OpportunitiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ leadId?: string }>;
+}) {
   const session = await auth();
   if (!session?.user) return null;
   const workspaceId = session.user.workspaceId;
+  const { leadId: prefillLeadId } = await searchParams;
 
   const [opportunities, stages, leads, properties] = await Promise.all([
     prisma.opportunity.findMany({
@@ -63,6 +68,7 @@ export default async function OpportunitiesPage() {
         stages={stages}
         leads={leads}
         properties={properties}
+        prefillLeadId={prefillLeadId && leads.some((l) => l.id === prefillLeadId) ? prefillLeadId : null}
       />
     </div>
   );
