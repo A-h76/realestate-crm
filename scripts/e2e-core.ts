@@ -32,7 +32,8 @@ async function login() {
     throw new Error("Set DEMO_SEED_PASSWORD or E2E_PASSWORD before running e2e.");
   }
   const { csrfToken, cookies } = await getCsrf();
-  let jar = cookies;
+  // /api/auth/csrf can set authjs.csrf-token twice; keep only the last one or Auth.js rejects the stale token (MissingCSRF).
+  let jar = mergeCookies([], cookies);
   const body = new URLSearchParams({
     csrfToken,
     email: process.env.E2E_EMAIL ?? "ahmed@synaslabs.demo",

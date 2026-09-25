@@ -83,7 +83,14 @@ export function GoldenPathClient({ stageIds, property }: { stageIds: StageIds; p
         return { status: "done", ctx: currentCtx };
       }
       case "assign": {
-        const data = await call("POST", `/api/leads/${currentCtx.leadId}/assign`);
+        const res = await fetch(`/api/leads/${currentCtx.leadId}/assign`, { method: "POST" });
+        if (res.status === 403) {
+          // Assignment is a manager action (leads:assign); an agent walks the rest of the path as lead owner.
+          setStep(id, { status: "done", notice: "Skipped: assigning leads needs a Manager or Owner" });
+          return { status: "done", ctx: currentCtx };
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? `Assign failed (${res.status})`);
         setStep(id, {
           status: "done",
           notice: `Assigned to ${data.assignment.agentName} (least-loaded: ${data.assignment.openLeadCount} open leads)`,

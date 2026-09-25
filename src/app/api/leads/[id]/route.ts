@@ -1,4 +1,5 @@
 import { ApiError, jsonError, jsonOk, requirePermission } from "@/lib/api";
+import { roleHasPermission } from "@/lib/authz";
 import { writeAudit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
@@ -38,11 +39,15 @@ export const GET = measuredRoute("GET /api/leads/:id", async (_request: Request,
 
 export const PATCH = measuredRoute("PATCH /api/leads/:id", async (request: Request, context: RouteContext) => {
   try {
-    const { workspaceId, userId } = await requirePermission("crm:write");
+    const { workspaceId, userId, role } = await requirePermission("crm:write");
     await enforceRateLimit({ key: `mut:${workspaceId}:${userId}`, ...RATE_LIMITS.mutation });
     const { id } = await context.params;
     const existing = await findLead(workspaceId, id);
     const body = emptyToNull(parseBody(leadUpdateSchema, await request.json()));
+    // Reassignment is a manager action; agents claim leads via /take-over instead.
+    if (body.ownerId !== undefined && body.ownerId !== existing.ownerId && !roleHasPermission(role, "leads:assign")) {
+      throw new ApiError(403, "Insufficient permissions");
+    }
     await assertRelationsInWorkspace(workspaceId, {
       ownerId: body.ownerId,
       accountId: body.accountId,

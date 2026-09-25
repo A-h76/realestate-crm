@@ -86,7 +86,13 @@ async function applyStatusUpdate(workspaceId: string, status: { id?: string; sta
   );
 }
 
-async function storeInboundMessage(input: {
+/**
+ * Everything the Meta webhook does for one inbound text after signature
+ * verification: lead create/update, requirement extraction, handoff
+ * detection, and the automatic conversation turn. Exported so the demo
+ * seed (prisma/seed-ux-audit.ts) exercises the real inbound path.
+ */
+export async function storeInboundMessage(input: {
   workspaceId: string;
   phone: string;
   body: string;

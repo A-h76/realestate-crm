@@ -12,11 +12,13 @@
     "test": "tsx --test tests/security/**/*.test.ts tests/perf/**/*.test.ts tests/unit/**/*.test.ts",
     "e2e:core": "tsx scripts/e2e-core.ts",
     "e2e:golden-path": "tsx scripts/e2e-golden-path.ts",
+    "e2e:rbac": "tsx scripts/e2e-rbac.ts",
     "perf:audit": "tsx scripts/perf-audit.ts",
     "perf:http": "tsx scripts/perf-http.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:ux-audit": "tsx prisma/seed-ux-audit.ts",
     "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts"
   },
   "prisma": {

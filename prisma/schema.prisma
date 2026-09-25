@@ -10,6 +10,7 @@ datasource db {
 enum WorkspaceRole {
   OWNER
   ADMIN
+  MANAGER
   AGENT
   VIEWER
 }
@@ -207,6 +208,8 @@ enum AuditAction {
   BRANDING_UPDATED
   CSV_IMPORTED
   HANDOFF_TRIGGERED
+  MEMBER_ROLE_CHANGED
+  MEMBER_REMOVED
 }
 
 enum IntelligenceKind {

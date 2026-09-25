@@ -6,29 +6,30 @@ import {
   clearWorkspaceData,
   seedDemoWorkspace,
   WORKSPACE_SLUG,
-  type SeedResult,
 } from "../../../prisma/seed-data";
+import { seedUxAuditWorkspace, UX_AUDIT_SLUG } from "../../../prisma/seed-ux-audit-data";
 
 /**
- * Deletes all workspace-scoped data for the demo workspace, re-seeds the
- * deterministic dataset, then writes a DEMO_RESET audit log.
+ * Deletes all workspace-scoped data for a demo workspace, re-seeds its
+ * deterministic dataset, then writes a DEMO_RESET audit log. Only the two
+ * known demo workspaces (by slug, and flagged isDemo) can be reset.
  */
-export async function resetDemo(
-  workspaceId: string,
-  actorId: string,
-): Promise<SeedResult> {
+export async function resetDemo(workspaceId: string, actorId: string) {
   const workspace = await prisma.workspace.findFirst({
-    where: { id: workspaceId, slug: WORKSPACE_SLUG, deletedAt: null, isDemo: true },
+    where: { id: workspaceId, slug: { in: [WORKSPACE_SLUG, UX_AUDIT_SLUG] }, deletedAt: null, isDemo: true },
   });
 
   if (!workspace || !workspace.isDemo) {
-    throw new Error(
-      "Reset Demo is only available for the Synas Realty demo workspace.",
-    );
+    throw new Error("Reset Demo is only available for the Synas demo workspaces.");
   }
 
-  await clearWorkspaceData(prisma, workspace.id);
-  const result = await seedDemoWorkspace(prisma);
+  let result: { workspaceId: string; counts: Record<string, number> };
+  if (workspace.slug === UX_AUDIT_SLUG) {
+    result = await seedUxAuditWorkspace();
+  } else {
+    await clearWorkspaceData(prisma, workspace.id);
+    result = await seedDemoWorkspace(prisma);
+  }
 
   await prisma.auditLog.create({
     data: {

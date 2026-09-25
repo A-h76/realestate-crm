@@ -296,6 +296,27 @@ describe("generateReply — one template per decision, grounded, no AI needed", 
     assert.doesNotMatch(reply, /NO_GROUNDED_INVENTORY_MATCH|REVIEW_ALTERNATIVES/);
   });
 
+  it("names a location only when every match is actually in it", () => {
+    const same = [scoredMatch({ area: "DHA Phase 2" }), scoredMatch({ id: "p2", area: "DHA Phase 2" })];
+    assert.equal(
+      generateReply({ type: "SHOW_MATCHES", matches: same }, "UR_EN"),
+      "Mere paas DHA Phase 2 mein 2 properties hain jo aapki requirement ke qareeb hain. Main details bhej doon?",
+    );
+    assert.equal(
+      generateReply({ type: "SHOW_MATCHES", matches: [same[0]] }, "UR_EN"),
+      "Mere paas DHA Phase 2 mein 1 property hai jo aapki requirement ke qareeb hai. Main details bhej doon?",
+    );
+  });
+
+  it("breaks mixed-area matches down by their real areas instead of claiming the lead's area", () => {
+    const mixed = [scoredMatch({ area: "DHA Phase 6" }), scoredMatch({ id: "p2", area: "Cantt" }), scoredMatch({ id: "p3", area: "Cantt" })];
+    const ur = generateReply({ type: "SHOW_MATCHES", matches: mixed }, "UR_EN");
+    assert.equal(ur, "Mere paas 3 properties hain jo aapki requirement ke qareeb hain (1 DHA Phase 6, 2 Cantt). Main details bhej doon?");
+    const en = generateReply({ type: "SHOW_MATCHES", matches: mixed }, "EN");
+    assert.equal(en, "I have 3 properties that match your requirements (1 DHA Phase 6, 2 Cantt). Should I share the details?");
+    assert.equal(generateReply({ type: "SHOW_MATCHES", matches: [scoredMatch({ area: null })] }, "EN"), "I have 1 property that matches your requirements. Should I share the details?");
+  });
+
   it("says photos aren't available rather than fabricating a link", () => {
     const reply = generateReply({ type: "PHOTOS_UNAVAILABLE" }, "UR_EN");
     assert.doesNotMatch(reply, /http|www\./i);

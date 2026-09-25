@@ -33,6 +33,7 @@ export default function AutomationsPage() {
   const [execs, setExecs] = useState<Execution[]>([]);
   const [selected, setSelected] = useState<Execution | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [canManage, setCanManage] = useState(false);
 
   const load = useCallback(async () => {
     const [a, e] = await Promise.all([fetch("/api/automations"), fetch("/api/automations/executions")]);
@@ -40,6 +41,7 @@ export default function AutomationsPage() {
     const ed = await e.json();
     if (!a.ok) throw new Error(ad.error ?? "Failed");
     setItems(ad.items ?? []);
+    setCanManage(Boolean(ad.canManage));
     setExecs(ed.items ?? []);
   }, []);
 
@@ -76,7 +78,13 @@ export default function AutomationsPage() {
               <Badge tone={item.paused || !item.enabled ? "warning" : "accent"}>
                 {item.paused ? "Paused" : item.enabled ? "Live" : "Off"}
               </Badge>
-              <Button size="sm" variant="outline" onClick={() => void toggle(item, "paused")}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!canManage}
+                title={canManage ? undefined : "Only the owner or an admin can pause automations"}
+                onClick={() => void toggle(item, "paused")}
+              >
                 {item.paused ? "Resume" : "Pause"}
               </Button>
             </div>

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ApiError, jsonError, jsonOk, requirePermission } from "@/lib/api";
+import { roleHasPermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { parseBody } from "@/lib/validations/common";
 import { evaluateInactiveLeads } from "@/lib/automation/engine";
@@ -14,13 +15,13 @@ const patchSchema = z.object({
 
 export const GET = measuredRoute("GET /api/automations", async (_request: Request) => {
   try {
-    const { workspaceId } = await requirePermission("automations:read");
+    const { workspaceId, role } = await requirePermission("automations:read");
     const items = await prisma.automation.findMany({
       where: { workspaceId },
       orderBy: { createdAt: "asc" },
       include: { _count: { select: { executions: true } } },
     });
-    return jsonOk({ items });
+    return jsonOk({ items, canManage: roleHasPermission(role, "automations:manage") });
   } catch (error) {
     return jsonError(error);
   }

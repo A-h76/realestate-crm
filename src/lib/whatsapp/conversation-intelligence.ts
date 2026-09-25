@@ -101,7 +101,7 @@ export function nextMissingRequirement(lead: RequirementLeadSnapshot): Requireme
 export type ConversationDecision =
   | { type: "GREETING" }
   | { type: "ASK_QUESTION"; field: RequirementField }
-  | { type: "SHOW_MATCHES"; matches: ScoredPropertyMatch[]; area: string | null }
+  | { type: "SHOW_MATCHES"; matches: ScoredPropertyMatch[] }
   | { type: "SHOW_MATCH_DETAILS"; matches: ScoredPropertyMatch[] }
   | { type: "ANSWER_PROPERTY_QUESTION"; kind: "PRICE" | "LOCATION" | "AVAILABILITY"; property: ScoredPropertyMatch | null }
   | { type: "PHOTOS_UNAVAILABLE" }
@@ -169,7 +169,7 @@ export function decideConversationAction(input: {
   if (missing) return { type: "ASK_QUESTION", field: missing };
 
   if (input.matches.length > 0) {
-    return { type: "SHOW_MATCHES", matches: input.matches, area: input.lead.preferredArea };
+    return { type: "SHOW_MATCHES", matches: input.matches };
   }
 
   // Full requirement known, nothing grounded in inventory — recommending an
@@ -205,6 +205,28 @@ const ASK_QUESTION_TEXT: Record<RequirementField, Record<ReplyLanguage, string>>
   },
 };
 
+/**
+ * Location wording for a match count, taken only from the matched records'
+ * own area field. The matcher also returns DHA-family and other-area matches,
+ * so the lead's preferred area is never assumed to be where they are.
+ * "DHA Phase 6" when every match shares one area, otherwise a per-area
+ * breakdown like "1 DHA Phase 6, 2 Valencia"; null when areas are unknown.
+ */
+export function describeMatchAreas(matches: ScoredPropertyMatch[]): { single: string } | { breakdown: string } | null {
+  const counts = new Map<string, number>();
+  for (const m of matches) {
+    const area = m.property.area?.trim();
+    if (area) counts.set(area, (counts.get(area) ?? 0) + 1);
+  }
+  if (counts.size === 0) return null;
+  const [first] = counts.keys();
+  if (counts.size === 1 && counts.get(first) === matches.length) return { single: first };
+  const parts = [...counts].map(([area, n]) => `${n} ${area}`);
+  const unknown = matches.length - [...counts.values()].reduce((a, b) => a + b, 0);
+  if (unknown > 0) parts.push(`${unknown} other`);
+  return { breakdown: parts.join(", ") };
+}
+
 function propertyLine(match: ScoredPropertyMatch): string {
   const p = match.property;
   const size = p.size != null ? `${p.size} ${p.sizeUnit}` : null;
@@ -234,10 +256,17 @@ export function generateReply(decision: ConversationDecision, lang: ReplyLanguag
 
     case "SHOW_MATCHES": {
       const count = decision.matches.length;
-      const where = decision.area ?? (lang === "UR_EN" ? "aapki requirement" : "your area");
-      return lang === "UR_EN"
-        ? `Mere paas ${where} mein ${count} ${plural(count, "property", "properties")} hain jo aapki requirement ke qareeb ${plural(count, "hai", "hain")}. Main details bhej doon?`
-        : `I have ${count} ${plural(count, "property", "properties")} in ${where} that ${plural(count, "matches", "match")} your requirements. Should I share the details?`;
+      const areas = describeMatchAreas(decision.matches);
+      const noun = plural(count, "property", "properties");
+      if (lang === "UR_EN") {
+        const verb = plural(count, "hai", "hain");
+        const head = areas && "single" in areas ? `Mere paas ${areas.single} mein ${count} ${noun} ${verb}` : `Mere paas ${count} ${noun} ${verb}`;
+        const tail = areas && "breakdown" in areas ? ` (${areas.breakdown})` : "";
+        return `${head} jo aapki requirement ke qareeb ${verb}${tail}. Main details bhej doon?`;
+      }
+      const where = areas && "single" in areas ? ` in ${areas.single}` : "";
+      const tail = areas && "breakdown" in areas ? ` (${areas.breakdown})` : "";
+      return `I have ${count} ${noun}${where} that ${plural(count, "matches", "match")} your requirements${tail}. Should I share the details?`;
     }
 
     case "SHOW_MATCH_DETAILS": {

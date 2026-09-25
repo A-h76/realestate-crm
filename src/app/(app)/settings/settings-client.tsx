@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ASSIGNABLE_ROLES, memberChangeDenial } from "@/lib/authz";
+import type { WorkspaceRole } from "@prisma/client";
 
 export type BrandingFields = {
   companyName: string;
@@ -23,16 +25,18 @@ export function SettingsClient({
   timezone,
   currency,
   isDemo,
+  viewer,
   members,
   stages,
   integrations,
 }: {
+  viewer: { userId: string; role: WorkspaceRole; canEditWorkspace: boolean; canResetDemo: boolean };
   branding: BrandingFields | null;
   workspaceName: string;
   timezone: string;
   currency: string;
   isDemo: boolean;
-  members: Array<{ name: string; email: string; role: string }>;
+  members: Array<{ userId: string; name: string; email: string; role: WorkspaceRole }>;
   stages: Array<{ name: string; probability: number }>;
   integrations: {
     calendar: string;
@@ -69,6 +73,25 @@ export function SettingsClient({
       setError(err instanceof Error ? err.message : "Failed to reset demo");
     } finally {
       setResetting(false);
+    }
+  }
+
+  async function changeMember(userId: string, role: WorkspaceRole | null) {
+    if (role === null && !confirm("Remove this member from the workspace?")) return;
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/workspace/members/${userId}`, {
+        method: role ? "PATCH" : "DELETE",
+        headers: role ? { "Content-Type": "application/json" } : undefined,
+        body: role ? JSON.stringify({ role }) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Update failed");
+      setMessage(role ? "Role updated." : "Member removed.");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed");
     }
   }
 
@@ -141,13 +164,15 @@ export function SettingsClient({
               </dd>
             </div>
           </dl>
-          <div className="pt-6">
-            <div className="section-kicker">Danger zone</div>
-            <p className="mt-2 text-sm text-muted">Restore the deterministic known-good demo.</p>
-            <Button type="button" variant="danger" className="mt-4" disabled={resetting} onClick={() => void resetDemo()}>
-              {resetting ? "Resetting…" : "Reset Demo"}
-            </Button>
-          </div>
+          {isDemo && viewer.canResetDemo ? (
+            <div className="pt-6">
+              <div className="section-kicker">Danger zone</div>
+              <p className="mt-2 text-sm text-muted">Restore the deterministic known-good demo.</p>
+              <Button type="button" variant="danger" className="mt-4" disabled={resetting} onClick={() => void resetDemo()}>
+                {resetting ? "Resetting…" : "Reset Demo"}
+              </Button>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -164,15 +189,53 @@ export function SettingsClient({
 
       {tab === "team" ? (
         <section className="divide-y divide-border">
-          {members.map((m) => (
-            <div key={m.email} className="flex justify-between py-3 text-sm">
-              <span>
-                {m.name}
-                <span className="meta ml-2">{m.email}</span>
-              </span>
-              <span className="text-muted">{m.role}</span>
-            </div>
-          ))}
+          {members.map((m) => {
+            const editable =
+              memberChangeDenial({ actorId: viewer.userId, actorRole: viewer.role, targetId: m.userId, targetRole: m.role }) ===
+              null;
+            return (
+              <div key={m.userId} className="flex items-center justify-between gap-3 py-3 text-sm">
+                <span>
+                  {m.name}
+                  <span className="meta ml-2">{m.email}</span>
+                </span>
+                {editable ? (
+                  <span className="flex items-center gap-2">
+                    <select
+                      aria-label={`Role for ${m.name}`}
+                      className="h-7 border border-border bg-surface px-2 text-xs"
+                      value={m.role}
+                      onChange={(e) => void changeMember(m.userId, e.target.value as WorkspaceRole)}
+                    >
+                      {ASSIGNABLE_ROLES.filter(
+                        (r) =>
+                          r === m.role ||
+                          memberChangeDenial({
+                            actorId: viewer.userId,
+                            actorRole: viewer.role,
+                            targetId: m.userId,
+                            targetRole: m.role,
+                            newRole: r,
+                          }) === null,
+                      ).map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                    <Button type="button" size="sm" variant="outline" onClick={() => void changeMember(m.userId, null)}>
+                      Remove
+                    </Button>
+                  </span>
+                ) : (
+                  <span className="text-muted">
+                    {m.role}
+                    {m.userId === viewer.userId ? " · you" : ""}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </section>
       ) : null}
 
@@ -199,7 +262,9 @@ export function SettingsClient({
         <form onSubmit={(e) => void saveBranding(e)} className="max-w-lg space-y-4">
           <p className="text-sm text-muted">
             Re-skin the product for a client. Underlying CRM records do not change.
+            {viewer.canEditWorkspace ? null : " Only the workspace owner or an admin can change branding."}
           </p>
+          <fieldset disabled={!viewer.canEditWorkspace} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="companyName">Company name</Label>
             <Input
@@ -235,6 +300,7 @@ export function SettingsClient({
           <Button type="submit" variant="accent" disabled={saving}>
             {saving ? "Saving…" : "Save branding"}
           </Button>
+          </fieldset>
         </form>
       ) : null}
 

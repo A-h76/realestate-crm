@@ -39,4 +39,20 @@ describe("Source security contracts", () => {
     assert.ok(tenant.includes("updateMany"));
     assert.ok(tenant.includes("id: leadId, workspaceId"));
   });
+
+  it("gates lead assignment on leads:assign, not crm:write", () => {
+    const assign = read("src/app/api/leads/[id]/assign/route.ts");
+    assert.ok(assign.includes('requirePermission("leads:assign")'));
+    assert.ok(assign.includes("assertMemberInWorkspace(workspaceId, body.ownerId)"));
+    for (const route of ["src/app/api/leads/route.ts", "src/app/api/leads/[id]/route.ts"]) {
+      assert.ok(read(route).includes('roleHasPermission(role, "leads:assign")'), `${route} must guard ownerId changes`);
+    }
+  });
+
+  it("guards team management with members:manage plus the member-change rules", () => {
+    const members = read("src/app/api/workspace/members/[userId]/route.ts");
+    assert.equal(members.split('requirePermission("members:manage")').length - 1, 2);
+    assert.equal(members.split("memberChangeDenial(").length - 1, 2);
+    assert.ok(members.includes("workspaceId_userId: { workspaceId: access.workspaceId"));
+  });
 });

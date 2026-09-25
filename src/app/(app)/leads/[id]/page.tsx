@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MapPin } from "lucide-react";
-import { auth } from "@/lib/auth";
+import { requireAppAccess } from "@/lib/app-access";
+import { roleHasPermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { LeadIntelligencePanel } from "@/components/intelligence/lead-intelligence";
 import { PageHeader, SectionHeading } from "@/components/page-header";
 import { SourceName } from "@/components/source-name";
 import { LeadStageControl } from "@/components/leads/lead-stage-control";
+import { LeadOwnerControl } from "@/components/leads/lead-owner-control";
 import { WhatsAppThread } from "@/components/whatsapp/whatsapp-thread";
 import { formatCurrency, formatDatePK, formatDateTimePK, formatPKR } from "@/lib/format";
 import { filterAndScoreProperties } from "@/lib/matching/properties";
@@ -18,10 +20,10 @@ export default async function LeadDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user) return null;
+  const access = await requireAppAccess();
   const { id } = await params;
-  const workspaceId = session.user.workspaceId;
+  const workspaceId = access.workspaceId;
+  const canAssign = roleHasPermission(access.role, "leads:assign");
 
   const lead = await prisma.lead.findFirst({
     where: { id, workspaceId, deletedAt: null },
@@ -65,7 +67,7 @@ export default async function LeadDetailPage({
 
   if (!lead) notFound();
 
-  const [analysisRun, history, properties, nba] = await Promise.all([
+  const [analysisRun, history, properties, nba, members] = await Promise.all([
     prisma.intelligenceRun.findFirst({
       where: { workspaceId, leadId: lead.id, kind: "LEAD_ANALYSIS" },
       orderBy: { createdAt: "desc" },
@@ -77,6 +79,13 @@ export default async function LeadDetailPage({
     }),
     prisma.property.findMany({ where: { workspaceId, deletedAt: null } }),
     nextBestActionForLead(workspaceId, lead.id),
+    canAssign
+      ? prisma.workspaceMember.findMany({
+          where: { workspaceId, role: { not: "VIEWER" } },
+          select: { userId: true, role: true, user: { select: { name: true } } },
+          orderBy: { createdAt: "asc" },
+        })
+      : [],
   ]);
 
   const scored = filterAndScoreProperties(lead, properties);
@@ -103,6 +112,13 @@ export default async function LeadDetailPage({
         actions={
           <>
             <LeadStageControl leadId={lead.id} stage={lead.stage} />
+            <LeadOwnerControl
+              leadId={lead.id}
+              ownerId={lead.ownerId}
+              ownerName={lead.owner?.name ?? null}
+              canAssign={canAssign}
+              members={members.map((m) => ({ userId: m.userId, name: m.user.name, role: m.role }))}
+            />
             <SourceName source={lead.source} />
           </>
         }

@@ -32,30 +32,31 @@ describe("WhatsApp Inbox — workspace isolation", () => {
 });
 
 describe("WhatsApp Inbox — take-over action", () => {
+  // Route does auth + 404; the shared takeOverLead() (also used by the UX demo seed) does the writes.
+  const route = () => read("src/app/api/leads/[id]/take-over/route.ts");
+  const lib = () => read("src/lib/leads/take-over.ts");
+
   it("requires crm:write and scopes every mutation by workspaceId", () => {
-    const route = read("src/app/api/leads/[id]/take-over/route.ts");
-    assert.ok(route.includes('requirePermission("crm:write")'));
-    assert.ok(route.includes("prisma.lead.findFirst({ where: { id, workspaceId, deletedAt: null } })"));
-    assert.ok(route.includes("prisma.lead.updateMany({\n        where: { id, workspaceId }"));
-    assert.ok(route.includes("prisma.task.updateMany({"));
-    assert.ok(route.includes("leadId: id,"));
+    assert.ok(route().includes('requirePermission("crm:write")'));
+    assert.ok(route().includes("takeOverLead(workspaceId, id, userId)"));
+    assert.ok(lib().includes("prisma.lead.findFirst({ where: { id: leadId, workspaceId, deletedAt: null } })"));
+    assert.ok(lib().includes("prisma.lead.updateMany({\n    where: { id: leadId, workspaceId }"));
+    assert.ok(lib().includes("prisma.task.updateMany({\n    where: {\n      workspaceId,\n      leadId,"));
   });
 
   it("404s a lead outside the caller's workspace instead of leaking existence", () => {
-    const route = read("src/app/api/leads/[id]/take-over/route.ts");
-    assert.ok(route.includes('throw new ApiError(404, "Lead not found")'));
+    assert.ok(lib().includes("if (!lead) return null;"));
+    assert.ok(route().includes('if (!result) throw new ApiError(404, "Lead not found")'));
   });
 
   it("writes an audit entry for the ownership change", () => {
-    const route = read("src/app/api/leads/[id]/take-over/route.ts");
-    assert.ok(route.includes('action: "LEAD_UPDATED"'));
-    assert.ok(route.includes("handoff_take_over"));
+    assert.ok(lib().includes('action: "LEAD_UPDATED"'));
+    assert.ok(lib().includes("handoff_take_over"));
   });
 
   it("reuses the existing handoff open-task statuses rather than a second definition", () => {
-    const route = read("src/app/api/leads/[id]/take-over/route.ts");
     const inbox = read("src/lib/whatsapp/inbox.ts");
-    assert.ok(route.includes('import { OPEN_TASK_STATUSES } from "@/lib/whatsapp/handoff-event"'));
+    assert.ok(lib().includes('import { OPEN_TASK_STATUSES } from "@/lib/whatsapp/handoff-event"'));
     assert.ok(inbox.includes('import { OPEN_TASK_STATUSES } from "./handoff-event"'));
   });
 });

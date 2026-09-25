@@ -7,7 +7,7 @@ import { NotificationsMenu } from "@/components/layout/notifications-menu";
 import { initials } from "@/lib/dashboard-ui";
 import { prettyRole } from "@/lib/format";
 import { SignOutButton } from "@/components/layout/sign-out-button";
-import { DemoModeProvider } from "@/components/demo-banner";
+import { DemoBanner, DemoModeProvider } from "@/components/demo-banner";
 
 export function AppShell({
   userName,
@@ -43,6 +43,7 @@ export function AppShell({
           companyName={companyName}
           calendarDemo={calendarDemo}
           whatsappDemo={whatsappDemo}
+          userRole={userRole}
         />
       </div>
       {mobileNav ? (
@@ -60,6 +61,7 @@ export function AppShell({
               companyName={companyName}
               calendarDemo={calendarDemo}
               whatsappDemo={whatsappDemo}
+              userRole={userRole}
               onNavigate={() => setMobileNav(false)}
             />
           </div>
@@ -106,6 +108,11 @@ export function AppShell({
             </div>
           </div>
         </header>
+        <DemoBanner
+          className="mx-4 md:mx-6"
+          label="Demo workspace"
+          detail="Synthetic records for demos and UX testing. No real customers; no real WhatsApp messages are sent."
+        />
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
       <CommandCenter open={open} onOpenChange={setOpen} />

@@ -1,4 +1,5 @@
-import { auth } from "@/lib/auth";
+import { requireAppAccess } from "@/lib/app-access";
+import { roleHasPermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
 import { SettingsClient } from "./settings-client";
@@ -6,14 +7,13 @@ import { getCalendarProvider } from "@/lib/providers/calendar";
 import { getWhatsAppProvider } from "@/lib/providers/whatsapp";
 
 export default async function SettingsPage() {
-  const session = await auth();
-  if (!session?.user) return null;
+  const access = await requireAppAccess();
 
   const workspace = await prisma.workspace.findUnique({
-    where: { id: session.user.workspaceId },
+    where: { id: access.workspaceId },
     include: {
       branding: true,
-      members: { include: { user: { select: { name: true, email: true } } } },
+      members: { include: { user: { select: { name: true, email: true } } }, orderBy: { createdAt: "asc" } },
       pipelineStages: { orderBy: { order: "asc" } },
     },
   });
@@ -42,7 +42,14 @@ export default async function SettingsPage() {
         timezone={workspace?.timezone ?? "Asia/Karachi"}
         currency={workspace?.currency ?? "PKR"}
         isDemo={workspace?.isDemo ?? false}
+        viewer={{
+          userId: access.userId,
+          role: access.role,
+          canEditWorkspace: roleHasPermission(access.role, "workspace:write"),
+          canResetDemo: roleHasPermission(access.role, "demo:reset"),
+        }}
         members={(workspace?.members ?? []).map((m) => ({
+          userId: m.userId,
           name: m.user.name,
           email: m.user.email,
           role: m.role,

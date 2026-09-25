@@ -24,8 +24,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { initials } from "@/lib/dashboard-ui";
+import { roleHasPermission, type Permission } from "@/lib/authz";
+import type { WorkspaceRole } from "@prisma/client";
 
-const nav = [
+const nav: Array<{ href: string; label: string; icon: typeof Rocket; permission?: Permission }> = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/golden-path", label: "Golden Path", icon: Rocket },
   { href: "/leads", label: "Leads", icon: Users },
@@ -42,7 +44,7 @@ const nav = [
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/automations", label: "Automations", icon: Workflow },
   { href: "/settings", label: "Settings", icon: Settings },
-  { href: "/audit", label: "Audit Log", icon: ScrollText },
+  { href: "/audit", label: "Audit Log", icon: ScrollText, permission: "audit:read" },
 ];
 
 export function AppSidebar({
@@ -51,8 +53,10 @@ export function AppSidebar({
   companyName,
   calendarDemo,
   whatsappDemo,
+  userRole,
   onNavigate,
 }: {
+  userRole?: string | null;
   userName: string;
   workspaceName: string;
   companyName?: string;
@@ -70,7 +74,9 @@ export function AppSidebar({
         <div className="mt-1 text-[11px] text-sidebar-muted">Real Estate CRM · Pakistan</div>
       </div>
       <nav className="sidebar-scroll flex-1 space-y-0.5 px-3 pb-4">
-        {nav.map((item) => {
+        {nav
+          .filter((item) => !item.permission || (userRole && roleHasPermission(userRole as WorkspaceRole, item.permission)))
+          .map((item) => {
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
           return (
@@ -208,9 +214,10 @@ const COMMANDS = [
   { href: "/properties", label: "Create Property" },
   { href: "/tasks", label: "Create Task" },
   { href: "/calendar", label: "Schedule Site Visit" },
-  { href: "/leads/lead_buyer_pref_dha6", label: "Analyze Lead" },
-  { href: "/leads/lead_buyer_pref_dha6", label: "Find Property Match" },
-  { href: "/leads/lead_buyer_pref_dha6", label: "Draft WhatsApp Follow-up" },
+  // Lead-scoped: open the lead being viewed, otherwise the lead list (no hard-coded seed lead id).
+  { href: "lead", label: "Analyze Lead" },
+  { href: "lead", label: "Find Property Match" },
+  { href: "lead", label: "Draft WhatsApp Follow-up" },
   { href: "/proposals", label: "Create Proposal" },
   { href: "/tasks", label: "Show Overdue" },
   { href: "/leads", label: "Show High-Value Leads" },
@@ -224,6 +231,8 @@ export function CommandCenter({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const currentLeadId = /^\/leads\/([^/]+)/.exec(pathname)?.[1];
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit | null>(null);
 
@@ -277,11 +286,11 @@ export function CommandCenter({
             <button
               key={c.label}
               type="button"
-              onClick={() => go(c.href)}
+              onClick={() => go(c.href !== "lead" ? c.href : currentLeadId ? `/leads/${currentLeadId}` : "/leads")}
               className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-background"
             >
               <span>{c.label}</span>
-              <span className="meta">{c.hint ?? ""}</span>
+              <span className="meta">{c.hint ?? (c.href === "lead" && !currentLeadId ? "Pick a lead" : "")}</span>
             </button>
           ))}
           {hits ? (

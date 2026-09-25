@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
-import { jsonError, jsonOk, requirePermission } from "@/lib/api";
+import { ApiError, jsonError, jsonOk, requirePermission } from "@/lib/api";
+import { roleHasPermission } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { assertRelationsInWorkspace } from "@/lib/tenant";
@@ -80,9 +81,12 @@ export const GET = measuredRoute("GET /api/leads", async (request: Request) => {
 
 export const POST = measuredRoute("POST /api/leads", async (request: Request) => {
   try {
-    const { workspaceId, userId } = await requirePermission("crm:write");
+    const { workspaceId, userId, role } = await requirePermission("crm:write");
     await enforceRateLimit({ key: `mut:${workspaceId}:${userId}`, ...RATE_LIMITS.mutation });
     const body = emptyToNull(parseBody(leadCreateSchema, await request.json()));
+    if (body.ownerId && body.ownerId !== userId && !roleHasPermission(role, "leads:assign")) {
+      throw new ApiError(403, "Insufficient permissions");
+    }
     await assertRelationsInWorkspace(workspaceId, {
       ownerId: body.ownerId,
       accountId: body.accountId,
