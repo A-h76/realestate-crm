@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, X, ChevronDown } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { AppSidebar, CommandCenter, useCommandOpen } from "@/components/layout/app-sidebar";
 import { NotificationsMenu } from "@/components/layout/notifications-menu";
 import { initials } from "@/lib/dashboard-ui";
@@ -88,14 +88,13 @@ export function AppShell({
               ⌘ K
             </kbd>
           </button>
-          <button
-            type="button"
-            className="hidden h-10 items-center gap-1 rounded-full border border-border bg-surface px-3 text-[13px] font-medium text-foreground sm:inline-flex"
-            aria-label="Workspace city"
+          <span
+            className="hidden h-10 items-center rounded-full border border-border bg-surface px-3 text-[13px] font-medium text-foreground sm:inline-flex"
+            title={`Workspace market: ${city}`}
           >
+            <span className="sr-only">Workspace market: </span>
             {city}
-            <ChevronDown className="h-3.5 w-3.5 text-muted" />
-          </button>
+          </span>
           <NotificationsMenu />
           <div className="hidden items-center gap-2 sm:flex">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-[11px] font-bold text-white">
