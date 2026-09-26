@@ -368,7 +368,11 @@ async function assertSafeToSeed() {
 
 export async function seedUxAuditWorkspace() {
   const existing = await assertSafeToSeed();
-  const passwordHash = await bcrypt.hash(getDemoSeedPassword(), 10);
+  // Optional separate password so the external designer's logins don't unlock the Synas Realty demo.
+  const passwordHash = await bcrypt.hash(
+    getDemoSeedPassword(process.env.UX_AUDIT_PASSWORD ? "UX_AUDIT_PASSWORD" : "DEMO_SEED_PASSWORD"),
+    10,
+  );
 
   if (existing) await clearWorkspaceData(prisma, existing.id);
 

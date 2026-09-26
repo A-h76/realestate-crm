@@ -4,11 +4,11 @@ import { isDemoMode } from "../src/lib/demo-mode";
 
 export const WORKSPACE_SLUG = "synas-realty-demo";
 
-export function getDemoSeedPassword(): string {
-  const password = process.env.DEMO_SEED_PASSWORD;
+export function getDemoSeedPassword(envVar = "DEMO_SEED_PASSWORD"): string {
+  const password = process.env[envVar];
   if (!password || password.length < 8) {
     throw new Error(
-      "DEMO_SEED_PASSWORD must be set to a value at least 8 characters long before seeding demo data.",
+      `${envVar} must be set to a value at least 8 characters long before seeding demo data.`,
     );
   }
   return password;

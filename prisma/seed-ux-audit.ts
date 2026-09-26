@@ -15,7 +15,7 @@ async function main() {
 
   console.log("\nUX audit demo ready.");
   console.log("Counts:", JSON.stringify(result.counts, null, 2));
-  console.log("\nLogins (password = the DEMO_SEED_PASSWORD you supplied; it is not printed):");
+  console.log("\nLogins (password = UX_AUDIT_PASSWORD, or DEMO_SEED_PASSWORD if unset; it is not printed):");
   for (const u of UX_AUDIT_USERS) console.log(`  ${u.email.padEnd(32)} ${u.role}`);
   console.log("\nScenario leads:");
   for (const s of result.scenarios) console.log(`  /leads/${s.leadId}  ${s.name}: ${s.scenario}`);

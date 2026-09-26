@@ -16,8 +16,8 @@ import { seedUxAuditWorkspace, UX_AUDIT_WORKSPACE_ID as WS } from "../prisma/see
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 
 async function login(email: string): Promise<string> {
-  const password = process.env.DEMO_SEED_PASSWORD;
-  if (!password) throw new Error("Set DEMO_SEED_PASSWORD before running e2e:rbac.");
+  const password = process.env.UX_AUDIT_PASSWORD ?? process.env.DEMO_SEED_PASSWORD;
+  if (!password) throw new Error("Set UX_AUDIT_PASSWORD or DEMO_SEED_PASSWORD before running e2e:rbac.");
   const csrf = await fetch(`${BASE}/api/auth/csrf`);
   const { csrfToken } = await csrf.json();
   const jar = new Map<string, string>();

@@ -63,7 +63,7 @@ npx prisma migrate deploy        # adds the MANAGER role
 npm run db:seed:ux-audit         # safe to re-run: rebuilds only this workspace
 ```
 
-Sign in at `/login` with the password you set as `DEMO_SEED_PASSWORD`:
+Sign in at `/login` with `UX_AUDIT_PASSWORD` (falls back to `DEMO_SEED_PASSWORD` if unset):
 
 | Email | Role |
 | --- | --- |
