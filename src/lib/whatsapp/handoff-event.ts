@@ -4,7 +4,7 @@ import { writeAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
 import { assignLeastLoadedAgent } from "@/lib/assignment/assign-lead";
 import { filterAndScoreProperties } from "@/lib/matching/properties";
-import { formatCurrency } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import {
   HANDOFF_REASON_LABELS,
   SUGGESTED_ACTION_LABELS,
@@ -48,8 +48,8 @@ function requirementSummary(lead: Lead): string {
     const max = lead.budgetMax ? Number(lead.budgetMax) : null;
     parts.push(
       min != null && max != null && min !== max
-        ? `${formatCurrency(min, lead.currency)} - ${formatCurrency(max, lead.currency)}`
-        : `Up to ${formatCurrency(max ?? min, lead.currency)}`,
+        ? `${formatMoney(min, lead.currency)} - ${formatMoney(max, lead.currency)}`
+        : `Up to ${formatMoney(max ?? min, lead.currency)}`,
     );
   }
   return parts.length ? parts.join(", ") : "Unknown";

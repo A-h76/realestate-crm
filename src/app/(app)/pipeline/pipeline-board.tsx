@@ -13,7 +13,8 @@ import {
   useDroppable,
 } from "@dnd-kit/core";
 import { useDraggable } from "@dnd-kit/core";
-import { formatCurrency } from "@/lib/format";
+import { useCan } from "@/components/providers/permissions";
+import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type Stage = {
@@ -40,10 +41,23 @@ type OppCard = {
   nextAction: string | null;
 };
 
-function Card({ opp, dragging }: { opp: OppCard; dragging?: boolean }) {
+function Card({
+  opp,
+  dragging,
+  stages,
+  canMove,
+  onMove,
+}: {
+  opp: OppCard;
+  dragging?: boolean;
+  stages?: Stage[];
+  canMove?: boolean;
+  onMove?: (oppId: string, stageId: string) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: opp.id,
     data: { stageId: opp.stageId },
+    disabled: !canMove,
   });
 
   const style = transform
@@ -57,7 +71,8 @@ function Card({ opp, dragging }: { opp: OppCard; dragging?: boolean }) {
       {...listeners}
       {...attributes}
       className={cn(
-        "cursor-grab border-b border-border bg-surface p-3 active:cursor-grabbing",
+        "border-b border-border bg-surface p-3",
+        canMove && "cursor-grab active:cursor-grabbing",
         (isDragging || dragging) && "opacity-40",
       )}
     >
@@ -65,7 +80,7 @@ function Card({ opp, dragging }: { opp: OppCard; dragging?: boolean }) {
         <div className="text-sm font-medium leading-snug">{opp.name}</div>
         <span className="meta">{opp.dealSide}</span>
       </div>
-      <div className="mt-2 text-sm">{formatCurrency(opp.value)}</div>
+      <div className="mt-2 text-sm">{formatMoney(opp.value)}</div>
       <div className="meta mt-2">
         {opp.propertyTitle ?? "No property"} · {opp.probability}%
         {opp.leadScore != null ? ` · ${opp.leadScore} score` : ""}
@@ -74,7 +89,31 @@ function Card({ opp, dragging }: { opp: OppCard; dragging?: boolean }) {
         {opp.daysInStage}d in stage
         {opp.ownerName ? ` · ${opp.ownerName}` : ""}
       </div>
-      {opp.nextAction ? <div className="mt-1 text-[11px] text-muted">{opp.nextAction}</div> : null}
+      {opp.nextAction ? (
+        <div className="mt-1 text-[11px] text-muted">Next: {opp.nextAction}</div>
+      ) : stages?.find((s) => s.id === opp.stageId)?.isWon || stages?.find((s) => s.id === opp.stageId)?.isLost ? null : (
+        <div className="mt-1 text-[11px] font-medium text-warning">No next action</div>
+      )}
+      {canMove && stages && onMove ? (
+        // Keyboard / touch alternative to dragging; stopPropagation so using it never starts a drag.
+        <div className="mt-2" onPointerDown={(e) => e.stopPropagation()}>
+          <label className="sr-only" htmlFor={`move-${opp.id}`}>
+            Move {opp.name} to stage
+          </label>
+          <select
+            id={`move-${opp.id}`}
+            className="h-7 w-full border border-border bg-surface px-1 text-xs"
+            value={opp.stageId}
+            onChange={(e) => onMove(opp.id, e.target.value)}
+          >
+            {stages.map((st) => (
+              <option key={st.id} value={st.id}>
+                {st.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -82,9 +121,15 @@ function Card({ opp, dragging }: { opp: OppCard; dragging?: boolean }) {
 function Column({
   stage,
   items,
+  stages,
+  canMove,
+  onMove,
 }: {
   stage: Stage;
   items: OppCard[];
+  stages: Stage[];
+  canMove: boolean;
+  onMove: (oppId: string, stageId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
   const total = items.reduce((s, o) => s + o.value, 0);
@@ -107,12 +152,12 @@ function Column({
           <span className="mono text-[11px] text-muted">{items.length}</span>
         </div>
         <div className="mono mt-1 text-[11px] text-muted">
-          {formatCurrency(total)} · {stage.probability}%
+          {formatMoney(total)} · {stage.probability}%
         </div>
       </div>
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2" style={{ maxHeight: "70vh" }}>
         {items.map((opp) => (
-          <Card key={opp.id} opp={opp} />
+          <Card key={opp.id} opp={opp} stages={stages} canMove={canMove} onMove={onMove} />
         ))}
       </div>
     </div>
@@ -126,6 +171,7 @@ export function PipelineBoard({
   stages: Stage[];
   initialOpportunities: OppCard[];
 }) {
+  const canMove = useCan("crm:write");
   const [opps, setOpps] = useState(initialOpportunities);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -159,7 +205,11 @@ export function PipelineBoard({
       : opps.find((o) => o.id === overId)?.stageId;
 
     if (!targetStageId) return;
+    await moveOpportunity(oppId, targetStageId);
+  }
 
+  async function moveOpportunity(oppId: string, targetStageId: string) {
+    if (!canMove) return;
     const current = opps.find((o) => o.id === oppId);
     if (!current || current.stageId === targetStageId) return;
 
@@ -178,7 +228,8 @@ export function PipelineBoard({
       const res = await fetch(`/api/opportunities/${oppId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stageId: targetStageId }),
+        // expectedStageId: if someone else already moved this deal the server answers 409 instead of overwriting.
+        body: JSON.stringify({ stageId: targetStageId, expectedStageId: current.stageId }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -246,7 +297,12 @@ export function PipelineBoard({
 
   return (
     <div className="space-y-3">
-      {error ? <div className="border border-danger/30 bg-red-50 px-3 py-2 text-sm text-danger">{error}</div> : null}
+      {error ? (
+        <div role="alert" className="border border-danger/30 bg-red-50 px-3 py-2 text-sm text-danger">
+          {error}
+        </div>
+      ) : null}
+      {!canMove ? <p className="text-xs text-muted">Your role is view-only: opportunities cannot be moved.</p> : null}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -255,7 +311,7 @@ export function PipelineBoard({
       >
         <div className="flex gap-3 overflow-x-auto pb-4">
           {stages.map((stage) => (
-            <Column key={stage.id} stage={stage} items={byStage[stage.id] ?? []} />
+            <Column key={stage.id} stage={stage} items={byStage[stage.id] ?? []} stages={stages} canMove={canMove} onMove={(id, to) => void moveOpportunity(id, to)} />
           ))}
         </div>
         <DragOverlay>{activeOpp ? <Card opp={activeOpp} dragging /> : null}</DragOverlay>

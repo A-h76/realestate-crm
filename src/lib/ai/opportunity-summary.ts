@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { prisma } from "@/lib/db";
 import { parseAiOutput, opportunitySummarySchema } from "./schemas";
 import { storeIntelligenceRun } from "./store";
@@ -23,15 +23,15 @@ export async function summarizeOpportunity(input: {
 
   const daysInStage = Math.floor((Date.now() - opp.stageEnteredAt.getTime()) / 86400000);
   const output = parseAiOutput(opportunitySummarySchema, {
-    summary: `${opp.name} is a ${opp.dealSide.toLowerCase()} deal in ${opp.stage.name} at ${formatCurrency(Number(opp.value))} (${opp.probability}%). ${opp.linkedProperty ? `Linked: ${opp.linkedProperty.title}.` : "No property linked."} ${opp.lead ? `Lead ${opp.lead.firstName} ${opp.lead.lastName ?? ""}.` : ""}`.trim(),
-    valueNarrative: `Gross ${formatCurrency(Number(opp.value))} · weighted ${formatCurrency((Number(opp.value) * opp.probability) / 100)}.`,
+    summary: `${opp.name} is a ${opp.dealSide.toLowerCase()} deal in ${opp.stage.name} at ${formatMoney(Number(opp.value))} (${opp.probability}%). ${opp.linkedProperty ? `Linked: ${opp.linkedProperty.title}.` : "No property linked."} ${opp.lead ? `Lead ${opp.lead.firstName} ${opp.lead.lastName ?? ""}.` : ""}`.trim(),
+    valueNarrative: `Gross ${formatMoney(Number(opp.value))} · weighted ${formatMoney((Number(opp.value) * opp.probability) / 100)}.`,
     stageRisk: daysInStage >= 14
       ? `Stalled ${daysInStage} days in ${opp.stage.name}.`
       : `${daysInStage} days in ${opp.stage.name}.`,
     recommendedAction: opp.stage.slug === "proposal"
       ? "Follow up on the proposal"
       : opp.stage.slug === "discovery"
-        ? "Schedule site visit"
+        ? "Schedule showing"
         : opp.stage.isLost
           ? "Capture lost reason"
           : "Advance with a dated next step",

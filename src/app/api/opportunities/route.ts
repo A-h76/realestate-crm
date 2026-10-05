@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { ApiError, jsonError, jsonOk, requirePermission } from "@/lib/api";
+import { assertPropertyNotAlreadyWon, lockProperties, reconcilePropertyStatus } from "@/lib/leads/convert-on-won";
 import { writeAudit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
@@ -89,27 +90,44 @@ export const POST = measuredRoute("POST /api/opportunities", async (request: Req
     });
     if (!stage) throw new ApiError(400, "Invalid pipeline stage");
 
-    const opportunity = await prisma.opportunity.create({
-      data: {
-        workspaceId,
-        name: body.name,
-        accountId: body.accountId,
-        primaryContactId: body.primaryContactId,
-        leadId: body.leadId,
-        linkedPropertyId: body.linkedPropertyId,
-        dealSide: body.dealSide,
-        value: body.value,
-        currency: body.currency,
-        probability: body.probability ?? stage.probability,
-        stageId: body.stageId,
-        ownerId: body.ownerId ?? userId,
-        expectedCloseDate: body.expectedCloseDate,
-        source: body.source,
-        description: body.description,
-        notes: body.notes,
-        stageEnteredAt: new Date(),
-      },
-      include: { stage: true },
+    const opportunity = await prisma.$transaction(async (tx) => {
+      // DATA-003: an opportunity created directly in a Won stage claims its property too.
+      const claimsProperty = stage.isWon && body.linkedPropertyId;
+      if (claimsProperty) {
+        await lockProperties(tx, workspaceId, [body.linkedPropertyId]);
+        await assertPropertyNotAlreadyWon(tx, workspaceId, body.linkedPropertyId!, null);
+      }
+      const created = await tx.opportunity.create({
+        data: {
+          workspaceId,
+          name: body.name,
+          accountId: body.accountId,
+          primaryContactId: body.primaryContactId,
+          leadId: body.leadId,
+          linkedPropertyId: body.linkedPropertyId,
+          dealSide: body.dealSide,
+          value: body.value,
+          currency: body.currency,
+          probability: body.probability ?? stage.probability,
+          stageId: body.stageId,
+          ownerId: body.ownerId ?? userId,
+          expectedCloseDate: body.expectedCloseDate,
+          source: body.source,
+          description: body.description,
+          notes: body.notes,
+          stageEnteredAt: new Date(),
+        },
+        include: { stage: true },
+      });
+      if (claimsProperty) {
+        await reconcilePropertyStatus(tx, {
+          workspaceId,
+          actorId: userId,
+          propertyId: body.linkedPropertyId!,
+          opportunityId: created.id,
+        });
+      }
+      return created;
     });
 
     await writeAudit({

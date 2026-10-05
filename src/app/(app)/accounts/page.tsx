@@ -1,16 +1,15 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requireAppAccess } from "@/lib/app-access";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { formatDatePK } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 
 export default async function AccountsPage() {
-  const session = await auth();
-  if (!session?.user) return null;
+  const { workspaceId } = await requireAppAccess();
 
   const accounts = await prisma.account.findMany({
-    where: { workspaceId: session.user.workspaceId, deletedAt: null },
+    where: { workspaceId: workspaceId, deletedAt: null },
     orderBy: { company: "asc" },
     include: {
       owner: { select: { name: true } },
@@ -64,7 +63,7 @@ export default async function AccountsPage() {
                   <td className="px-3 py-2 mono">{a._count.leads}</td>
                   <td className="px-3 py-2 mono">{a._count.opportunities}</td>
                   <td className="px-3 py-2 mono text-[11px] text-muted">
-                    {formatDatePK(a.createdAt)}
+                    {formatDate(a.createdAt)}
                   </td>
                 </tr>
               ))

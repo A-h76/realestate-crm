@@ -19,9 +19,9 @@ async function main() {
   console.log("Workspace:", result.workspaceId, "(synas-realty-demo)");
   console.log("Counts:", JSON.stringify(result.counts, null, 2));
   console.log("Demo users created. Password is the DEMO_SEED_PASSWORD you supplied — it is not printed.");
-  console.log("  ahmed@synaslabs.demo  — OWNER");
-  console.log("  sara@synaslabs.demo   — ADMIN");
-  console.log("  bilal@synaslabs.demo  — AGENT");
+  console.log("  dana@synaslabs.demo    — OWNER");
+  console.log("  sofia@synaslabs.demo   — ADMIN");
+  console.log("  marcus@synaslabs.demo  — AGENT");
 }
 
 main()

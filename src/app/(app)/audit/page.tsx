@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { formatDateTimePK } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { requireAppAccess } from "@/lib/app-access";
 import { roleHasPermission } from "@/lib/authz";
 
@@ -12,8 +12,8 @@ export default async function AuditPage() {
       <div className="space-y-8 p-8">
         <PageHeader
           eyebrow="Compliance"
-          title="Audit log"
-          description="You do not have permission to view workspace audit records."
+          title="Activity log"
+          description="You do not have permission to view the activity log."
         />
       </div>
     );
@@ -30,7 +30,7 @@ export default async function AuditPage() {
     <div className="space-y-8 p-8">
       <PageHeader
         eyebrow="Compliance"
-        title="Audit log"
+        title="Activity log"
         description="Workspace actions recorded for ops review."
       />
 
@@ -50,14 +50,14 @@ export default async function AuditPage() {
             {logs.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-3 py-8 text-center text-muted">
-                  No audit events yet.
+                  No activity recorded yet.
                 </td>
               </tr>
             ) : (
               logs.map((log) => (
                 <tr key={log.id} className="hover:bg-background/80 align-top">
                   <td className="px-3 py-2 mono text-[11px] text-muted whitespace-nowrap">
-                    {formatDateTimePK(log.createdAt)}
+                    {formatDateTime(log.createdAt)}
                   </td>
                   <td className="px-3 py-2">
                     <Badge tone="neutral">{log.action.replaceAll("_", " ")}</Badge>

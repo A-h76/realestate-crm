@@ -22,6 +22,8 @@ export type RateLimitResult = {
  * | Surface            | Key                    | Limit | Window   |
  * |--------------------|------------------------|-------|----------|
  * | Auth/login         | ip + email             | 5     | 15 min   |
+ * | Auth/login         | email (any IP)         | 10    | 15 min   |
+ * | Auth/login         | ip (any email)         | 30    | 15 min   |
  * | WhatsApp webhook   | ip                     | 120   | 1 min    |
  * | CSV import         | workspace + user       | 5     | 15 min   |
  * | CSV export         | workspace + user       | 10    | 15 min   |
@@ -31,9 +33,12 @@ export type RateLimitResult = {
  * | Search             | workspace + user       | 60    | 1 min    |
  * | Demo reset         | workspace + user       | 3     | 1 hour   |
  * | CRM mutations      | workspace + user       | 120   | 1 min    |
+ * | Accept invite      | ip                     | 10    | 15 min   |
  */
 export const RATE_LIMITS = {
   login: { limit: 5, windowMs: 15 * 60 * 1000 },
+  loginPerEmail: { limit: 10, windowMs: 15 * 60 * 1000 },
+  loginPerIp: { limit: 30, windowMs: 15 * 60 * 1000 },
   webhook: { limit: 120, windowMs: 60 * 1000 },
   csvImport: { limit: 5, windowMs: 15 * 60 * 1000 },
   csvExport: { limit: 10, windowMs: 15 * 60 * 1000 },
@@ -43,6 +48,7 @@ export const RATE_LIMITS = {
   search: { limit: 60, windowMs: 60 * 1000 },
   demoReset: { limit: 3, windowMs: 60 * 60 * 1000 },
   mutation: { limit: 120, windowMs: 60 * 1000 },
+  acceptInvite: { limit: 10, windowMs: 15 * 60 * 1000 },
 } as const;
 
 type StoreIncrement = (key: string, windowMs: number) => Promise<{ count: number; resetAt: number }>;
@@ -157,6 +163,18 @@ export async function enforceRateLimit(spec: RateLimitSpec): Promise<RateLimitRe
     });
   }
   return result;
+}
+
+/**
+ * Independent login buckets: rotating IPs doesn't escape the per-email limit (credential
+ * stuffing), and rotating emails doesn't escape the per-IP limit (password spraying).
+ */
+export function loginRateLimits(ip: string, email: string): RateLimitSpec[] {
+  return [
+    { key: `auth:login:${ip}:${email}`, ...RATE_LIMITS.login },
+    { key: `auth:login-email:${email}`, ...RATE_LIMITS.loginPerEmail },
+    { key: `auth:login-ip:${ip}`, ...RATE_LIMITS.loginPerIp },
+  ];
 }
 
 export { incrementMemory };

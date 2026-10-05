@@ -41,15 +41,17 @@ function textMessagePayload(opts: { phoneNumberId: string; waId: string; name?: 
 describe("Conversational intelligence — full WhatsApp flow", () => {
   let workspaceId: string;
   let phoneNumberId: string;
-  const waId = "923009998877";
-  const e164 = "+923009998877";
+  const waId = "14155550123";
+  const e164 = "+14155550123";
 
   before(async () => {
     process.env.WHATSAPP_APP_SECRET = SECRET;
     delete process.env.OPENAI_API_KEY;
     delete process.env.WHATSAPP_BUSINESS_ENABLED;
     const workspace = await prisma.workspace.create({
-      data: { name: "Conversation Flow Test", slug: `conv-flow-test-${randomUUID()}` },
+      // aiMode AUTO is set explicitly: this suite exercises the automatic reply engine, and
+      // DRAFT (the product default) deliberately sends nothing. See the DRAFT-mode test below.
+      data: { name: "Conversation Flow Test", slug: `conv-flow-test-${randomUUID()}`, aiMode: "AUTO" },
     });
     workspaceId = workspace.id;
     phoneNumberId = `phone-${randomUUID()}`;
@@ -58,15 +60,17 @@ describe("Conversational intelligence — full WhatsApp flow", () => {
     await prisma.property.create({
       data: {
         workspaceId,
-        title: "5 Marla House — DHA Phase 2",
-        area: "DHA Phase 2",
-        city: "Lahore",
-        propertyType: "HOUSE",
+        title: "2418 N Sawyer Ave — 3 Bed Townhouse",
+        area: "Logan Square",
+        city: "Chicago",
+        state: "IL",
+        postalCode: "60647",
+        propertyType: "TOWNHOUSE",
         purpose: "RENT",
-        size: 5,
-        sizeUnit: "MARLA",
+        size: 1650,
+        sizeUnit: "SQFT",
         bedrooms: 3,
-        price: 78_000,
+        price: 2_800,
         status: "AVAILABLE",
       },
     });
@@ -90,8 +94,8 @@ describe("Conversational intelligence — full WhatsApp flow", () => {
     assert.equal(getAIProvider(), null);
   });
 
-  it("greets naturally in Roman Urdu on a bare greeting, with no fabricated requirement and no handoff", async () => {
-    await send("wamid.g1", "Aoa");
+  it("greets naturally on a bare greeting, with no fabricated requirement and no handoff", async () => {
+    await send("wamid.g1", "Hi");
 
     const lead = await prisma.lead.findFirst({ where: { workspaceId, whatsappNumber: e164 } });
     assert.ok(lead);
@@ -103,19 +107,20 @@ describe("Conversational intelligence — full WhatsApp flow", () => {
       orderBy: { sentAt: "desc" },
     });
     assert.ok(outbound);
-    assert.equal(outbound!.body, "Wa Alaikum Assalam! Kesy hain aap? Kis property ke liye details chahiye apko?");
+    assert.equal(outbound!.body, "Hi! How can I help — what kind of home are you looking for?");
 
     const handoffTasks = await prisma.task.count({ where: { workspaceId, leadId: lead!.id, description: { contains: "[handoff:" } } });
     assert.equal(handoffTasks, 0);
   });
 
   it("extracts what it can and asks exactly one question for the missing purpose", async () => {
-    await send("wamid.g2", "5 marla house DHA 2 mein chahiye");
+    await send("wamid.g2", "Looking for a townhouse in Logan Square, around 1,600 sq ft");
 
     const lead = await prisma.lead.findFirst({ where: { workspaceId, whatsappNumber: e164 } });
-    assert.equal(lead!.propertyTypePref, "HOUSE");
-    assert.equal(lead!.preferredArea, "DHA Phase 2");
-    assert.equal(Number(lead!.sizePrefMin), 5);
+    assert.equal(lead!.propertyTypePref, "TOWNHOUSE");
+    assert.equal(lead!.preferredArea, "Logan Square");
+    assert.equal(Number(lead!.sizePrefMin), 1_600);
+    assert.equal(lead!.bedroomPref, null, "bedrooms were never stated, so nothing is guessed");
     assert.equal(lead!.propertyPurpose, null); // still unknown — must be asked, not guessed
 
     const conversationId = await latestConversationId();
@@ -123,7 +128,7 @@ describe("Conversational intelligence — full WhatsApp flow", () => {
       where: { workspaceId, conversationId, direction: "OUTBOUND" },
       orderBy: { sentAt: "desc" },
     });
-    assert.equal(outbound!.body, "Purchase ke liye chahiye ya rent pe?");
+    assert.equal(outbound!.body, "Are you looking to buy or rent?");
   });
 
   it("moves to the next missing question (budget) once purpose is answered — never re-asks what it already knows", async () => {
@@ -137,42 +142,42 @@ describe("Conversational intelligence — full WhatsApp flow", () => {
       where: { workspaceId, conversationId, direction: "OUTBOUND" },
       orderBy: { sentAt: "desc" },
     });
-    assert.equal(outbound!.body, "Aapka approx budget kya hai?");
+    assert.equal(outbound!.body, "What price range are you working with?");
   });
 
   it("runs the real property matcher once the full requirement is known and reports only real inventory", async () => {
-    await send("wamid.g4", "80k tak");
+    await send("wamid.g4", "up to $2,900");
 
     const lead = await prisma.lead.findFirst({ where: { workspaceId, whatsappNumber: e164 } });
-    assert.equal(Number(lead!.budgetMax), 80_000);
+    assert.equal(Number(lead!.budgetMax), 2_900);
 
     const conversationId = await latestConversationId();
     const outbound = await prisma.whatsAppMessage.findFirst({
       where: { workspaceId, conversationId, direction: "OUTBOUND" },
       orderBy: { sentAt: "desc" },
     });
-    assert.match(outbound!.body, /DHA Phase 2 mein 1 propert(y|ies)/);
+    assert.match(outbound!.body, /1 listing in Logan Square/);
     assert.match(outbound!.body, /details/i);
     assert.equal((outbound!.metadata as Record<string, unknown>).decision, "SHOW_MATCHES");
   });
 
   it("answers a property price question grounded in the real listing, never a fabricated figure", async () => {
-    await send("wamid.g5", "price kya hai?");
+    await send("wamid.g5", "how much is it?");
 
     const conversationId = await latestConversationId();
     const outbound = await prisma.whatsAppMessage.findFirst({
       where: { workspaceId, conversationId, direction: "OUTBOUND" },
       orderBy: { sentAt: "desc" },
     });
-    assert.match(outbound!.body, /78,000/);
-    assert.doesNotMatch(outbound!.body, /75,000|100,000/);
+    assert.match(outbound!.body, /\$2,800/);
+    assert.doesNotMatch(outbound!.body, /2,900|3,000/);
   });
 
   it("routes a site-visit request to the existing P0 #2 handoff system and sends no automatic reply for it", async () => {
     const conversationId = await latestConversationId();
     const before = await prisma.whatsAppMessage.count({ where: { workspaceId, conversationId, direction: "OUTBOUND" } });
 
-    await send("wamid.g6", "kal property dekh sakte hain?");
+    await send("wamid.g6", "can we see the place tomorrow?");
 
     const lead = await prisma.lead.findFirst({ where: { workspaceId, whatsappNumber: e164 } });
     const tasks = await prisma.task.findMany({ where: { workspaceId, leadId: lead!.id, description: { contains: "[handoff:" } } });
@@ -201,7 +206,7 @@ describe("Conversational intelligence — full WhatsApp flow", () => {
 
     const outboundBefore = await prisma.whatsAppMessage.count({ where: { workspaceId, conversationId, direction: "OUTBOUND" } });
 
-    await send("wamid.g7", "4 bed chahiye actually");
+    await send("wamid.g7", "actually we need 4 bedrooms");
 
     const updated = await prisma.lead.findFirst({ where: { id: lead!.id } });
     assert.equal(updated!.bedroomPref, 4, "extraction must keep updating the CRM after takeover");
@@ -212,8 +217,8 @@ describe("Conversational intelligence — full WhatsApp flow", () => {
 
   it("never discloses a system prompt or internal details for a prompt-injection attempt, and never crashes the webhook", async () => {
     // New, separate lead so takeover from the previous case doesn't suppress this reply.
-    const injectionWaId = "923001112233";
-    const injectionE164 = "+923001112233";
+    const injectionWaId = "14155550188";
+    const injectionE164 = "+14155550188";
     const raw = JSON.stringify(
       textMessagePayload({
         phoneNumberId,

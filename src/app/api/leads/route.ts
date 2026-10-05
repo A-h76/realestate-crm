@@ -6,7 +6,7 @@ import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { assertRelationsInWorkspace } from "@/lib/tenant";
 import { emptyToNull, sortOrder } from "@/lib/validations/helpers";
 import { paginationSkipTake, parseBody, parseQuery } from "@/lib/validations/common";
-import { leadCreateSchema, leadListQuerySchema } from "@/lib/validations/leads";
+import { leadCreateRequestSchema, leadListQuerySchema } from "@/lib/validations/leads";
 import { createLead } from "@/lib/leads/create-lead";
 import { measuredRoute } from "@/lib/perf";
 
@@ -83,7 +83,7 @@ export const POST = measuredRoute("POST /api/leads", async (request: Request) =>
   try {
     const { workspaceId, userId, role } = await requirePermission("crm:write");
     await enforceRateLimit({ key: `mut:${workspaceId}:${userId}`, ...RATE_LIMITS.mutation });
-    const body = emptyToNull(parseBody(leadCreateSchema, await request.json()));
+    const { allowDuplicate, ...body } = emptyToNull(parseBody(leadCreateRequestSchema, await request.json()));
     if (body.ownerId && body.ownerId !== userId && !roleHasPermission(role, "leads:assign")) {
       throw new ApiError(403, "Insufficient permissions");
     }
@@ -93,7 +93,7 @@ export const POST = measuredRoute("POST /api/leads", async (request: Request) =>
       contactId: body.contactId,
     });
 
-    const lead = await createLead(workspaceId, userId, body);
+    const lead = await createLead(workspaceId, userId, body, { allowDuplicate });
 
     return jsonOk(lead, 201);
   } catch (error) {

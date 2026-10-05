@@ -53,8 +53,16 @@ export const PATCH = measuredRoute("PATCH /api/automations", async (request: Req
 export const POST = measuredRoute("POST /api/automations", async (_request: Request) => {
   try {
     const { workspaceId, userId } = await requirePermission("automations:execute");
-    const executions = await evaluateInactiveLeads(workspaceId, userId);
-    return jsonOk({ executions, notice: "Inactive-lead automations evaluated." });
+    // Bounded: this runs inside the HTTP request, so it stops starting new leads after 20s (AUTO-005).
+    const state = { truncated: false };
+    const executions = await evaluateInactiveLeads(workspaceId, userId, { deadlineMs: 20_000, state });
+    return jsonOk({
+      executions,
+      truncated: state.truncated,
+      notice: state.truncated
+        ? "Time budget reached; remaining inactive leads will be handled by the next run."
+        : "Inactive-lead automations evaluated.",
+    });
   } catch (error) {
     return jsonError(error);
   }

@@ -1,23 +1,22 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireAppAccess } from "@/lib/app-access";
 import { prisma } from "@/lib/db";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { PageHeader, SectionHeading } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency, formatDatePK } from "@/lib/format";
+import { formatMoney, formatDate } from "@/lib/format";
 
 export default async function AccountDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user) return null;
+  const { workspaceId } = await requireAppAccess();
   const { id } = await params;
 
   const account = await prisma.account.findFirst({
-    where: { id, workspaceId: session.user.workspaceId, deletedAt: null },
+    where: { id, workspaceId: workspaceId, deletedAt: null },
     include: {
       owner: true,
       contacts: { where: { deletedAt: null }, orderBy: { firstName: "asc" } },
@@ -61,7 +60,7 @@ export default async function AccountDetailPage({
             ["Company size", account.companySize ?? "—"],
             ["Location", [account.locationArea, account.city].filter(Boolean).join(", ") || "—"],
             ["Revenue range", account.revenueRange ?? "—"],
-            ["Created", formatDatePK(account.createdAt)],
+            ["Created", formatDate(account.createdAt)],
           ].map(([label, value]) => (
             <div key={label} className="bg-surface px-4 py-3">
               <div className="section-kicker">{label}</div>
@@ -140,7 +139,7 @@ export default async function AccountDetailPage({
                     <Badge tone="neutral">{o.dealSide}</Badge>
                   </div>
                   <div className="mt-1 text-xs text-muted">
-                    {o.stage.name} · {formatCurrency(Number(o.value))}
+                    {o.stage.name} · {formatMoney(Number(o.value))}
                   </div>
                 </Link>
               ))
@@ -158,7 +157,7 @@ export default async function AccountDetailPage({
                 <div key={t.id} className="px-4 py-3">
                   <div className="text-sm font-medium">{t.title}</div>
                   <div className="mono mt-1 text-[11px] text-muted">
-                    {t.status} · {formatDatePK(t.dueAt)}
+                    {t.status} · {formatDate(t.dueAt)}
                   </div>
                 </div>
               ))

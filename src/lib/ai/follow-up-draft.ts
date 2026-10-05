@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { filterAndScoreProperties, type ScoredPropertyMatch } from "@/lib/matching/properties";
 import { describeMatchAreas } from "@/lib/whatsapp/conversation-intelligence";
 import { loadLeadContext, leadDisplayName } from "./context";
@@ -9,28 +9,25 @@ import {
 } from "./schemas";
 import { storeIntelligenceRun } from "./store";
 
-const FLAGSHIP_LEAD_ID = "lead_buyer_pref_dha6";
-
 export type DraftChannel = FollowUpDraft["channel"];
 
+/** "2 single-family options", "1 condo option" — reads as an agent would write it. */
+function propertyNoun(type: string | null | undefined, count: number): string {
+  const label = type ? type.toLowerCase().replaceAll("_", "-") : "listing";
+  return `${label} ${count === 1 ? "option" : "options"}`;
+}
+
 /** Count and location come only from the shortlisted records (see describeMatchAreas), never from the lead's preferred area. */
-function whatsappDraft(name: string, shortlist: ScoredPropertyMatch[], mix: boolean): string {
+function textDraft(name: string, shortlist: ScoredPropertyMatch[]): string {
   const n = shortlist.length;
   if (n === 0) {
-    return mix
-      ? `Assalam o Alaikum ${name}, abhi hamari listings mein aapki requirement se match karti property nahi hai. Naye options aate hi main share kar doon ga.`
-      : `Assalam o Alaikum ${name}, none of our current listings match your brief yet. I'll share new options as soon as they come in.`;
+    return `Hi ${name}, none of our current listings match what you're looking for yet. I'll send new options as soon as they hit the market.`;
   }
   const areas = describeMatchAreas(shortlist);
   const options = n === 1 ? "option" : "options";
-  if (mix) {
-    const where = areas && "single" in areas ? `${areas.single} mein ` : "";
-    const tail = areas && "breakdown" in areas ? ` (${areas.breakdown})` : "";
-    return `Assalam o Alaikum ${name}, ${where}aapke budget ke mutabiq ${n} ${options} shortlist ki hain${tail}. Agar convenient ho to main details share kar deta hoon.`;
-  }
   const where = areas && "single" in areas ? ` in ${areas.single}` : "";
   const tail = areas && "breakdown" in areas ? ` (${areas.breakdown})` : "";
-  return `Assalam o Alaikum ${name}, I have ${n} ${options}${where} that fit the brief${tail}. Shall I share details?`;
+  return `Hi ${name}, I pulled ${n} ${options}${where} that fit what you described${tail}. Want me to send the details?`;
 }
 
 export async function draftFollowUp(input: {
@@ -38,7 +35,6 @@ export async function draftFollowUp(input: {
   leadId: string;
   actorId?: string | null;
   channel: DraftChannel;
-  mixLanguage?: boolean;
 }) {
   const ctx = await loadLeadContext(input.workspaceId, input.leadId);
   if (!ctx) return null;
@@ -47,40 +43,33 @@ export async function draftFollowUp(input: {
   const matches = filterAndScoreProperties(ctx.lead, ctx.properties);
   const shortlist = matches.slice(0, 2);
   const shortlistAreas = describeMatchAreas(shortlist);
-  const mix = input.mixLanguage !== false;
   const visit = ctx.calendarEvents.find((e) => e.type === "SITE_VISIT" && e.status === "SCHEDULED");
   const nba = ctx.lead.nextAction;
 
   let body: string;
   let subject: string | null = null;
 
-  if (ctx.lead.id === FLAGSHIP_LEAD_ID && input.channel === "WHATSAPP") {
-    body =
-      "Assalam o Alaikum Ahmed, DHA Phase 6 mein aapke budget ke mutabiq 2 options shortlist ki hain. Agar convenient ho to main details share kar deta hoon.";
-  } else if (input.channel === "WHATSAPP") {
-    body = whatsappDraft(name, shortlist, mix);
-    if (visit) {
-      body = mix
-        ? `Assalam o Alaikum ${name}, site visit confirm kar raha hoon. Details share kar doon kya?`
-        : `Assalam o Alaikum ${name}, confirming the site visit — shall I send the property notes?`;
-    }
+  if (input.channel === "WHATSAPP") {
+    body = visit
+      ? `Hi ${name}, confirming your showing — want me to send the listing notes ahead of it?`
+      : textDraft(name, shortlist);
   } else if (input.channel === "EMAIL") {
-    subject = `${shortlistAreas && "single" in shortlistAreas ? shortlistAreas.single : "Property"} options for ${leadDisplayName(ctx.lead)}`;
+    subject = `${shortlistAreas && "single" in shortlistAreas ? shortlistAreas.single : "Listing"} options for ${leadDisplayName(ctx.lead)}`;
     body = [
-      `Dear ${leadDisplayName(ctx.lead)},`,
+      `Hi ${leadDisplayName(ctx.lead)},`,
       "",
       shortlist.length === 0
-        ? "Following our conversation, none of our current listings match your brief yet; I will share new options as they come in."
-        : `Following our conversation, I have shortlisted ${shortlist.length} ${ctx.lead.propertyTypePref?.toLowerCase() ?? "property"} ${shortlist.length === 1 ? "option" : "options"}${shortlistAreas && "single" in shortlistAreas ? ` in ${shortlistAreas.single}` : shortlistAreas ? ` (${shortlistAreas.breakdown})` : ""} within ${formatCurrency(ctx.lead.budgetMax ? Number(ctx.lead.budgetMax) : null)}.`,
+        ? "Following up on our conversation — none of our current listings match your criteria yet, and I'll send new options as they come on the market."
+        : `Following up on our conversation, I've shortlisted ${shortlist.length} ${propertyNoun(ctx.lead.propertyTypePref, shortlist.length)}${shortlistAreas && "single" in shortlistAreas ? ` in ${shortlistAreas.single}` : shortlistAreas ? ` (${shortlistAreas.breakdown})` : ""}${ctx.lead.budgetMax ? ` under ${formatMoney(Number(ctx.lead.budgetMax))}` : ""}.`,
       "",
-      nba ? `Suggested next step: ${nba}.` : "Suggested next step: a short site visit.",
+      nba ? `Suggested next step: ${nba}.` : "Suggested next step: a quick showing.",
       "",
-      "Please let me know a convenient time.",
+      "Let me know a time that works for you.",
       "",
-      "Regards",
+      "Best regards",
     ].join("\n");
   } else {
-    body = `Hi ${name} — sharing a concise ${ctx.lead.preferredArea ?? "Lahore"} shortlist aligned to your brief. Open to a 15-min walkthrough this week.`;
+    body = `Hi ${name} — sharing a short ${ctx.lead.preferredArea ?? "local"} shortlist matched to what you're looking for. Open to a 15-minute walkthrough this week?`;
   }
 
   const kind =
@@ -92,7 +81,7 @@ export async function draftFollowUp(input: {
 
   const output = parseAiOutput(followUpDraftSchema, {
     channel: input.channel,
-    language: mix && input.channel === "WHATSAPP" ? "UR_EN" : "EN",
+    language: "EN",
     subject,
     body,
     rationale: "Drafted from CRM stage, property matches, and last conversation. Not sent.",

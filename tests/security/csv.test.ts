@@ -19,7 +19,7 @@ describe("CSV hardening", () => {
     assert.equal(escapeCsvCell("@SUM(A1)"), "'@SUM(A1)");
     assert.equal(escapeCsvCell("-1+1"), "'-1+1");
     assert.equal(escapeCsvCell(-500000), "-500000");
-    assert.equal(escapeCsvCell("DHA Phase 6"), "DHA Phase 6");
+    assert.equal(escapeCsvCell("Lincoln Park"), "Lincoln Park");
   });
 
   it("encodes exported CSV with a BOM and escaped formula cells", () => {

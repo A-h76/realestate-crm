@@ -1,23 +1,22 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireAppAccess } from "@/lib/app-access";
 import { prisma } from "@/lib/db";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { PageHeader, SectionHeading } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency, formatDatePK, formatDateTimePK } from "@/lib/format";
+import { formatMoney, formatDate, formatDateTime } from "@/lib/format";
 
 export default async function ContactDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user) return null;
+  const { workspaceId } = await requireAppAccess();
   const { id } = await params;
 
   const contact = await prisma.contact.findFirst({
-    where: { id, workspaceId: session.user.workspaceId, deletedAt: null },
+    where: { id, workspaceId: workspaceId, deletedAt: null },
     include: {
       account: true,
       leads: { where: { deletedAt: null }, orderBy: { updatedAt: "desc" }, take: 15 },
@@ -78,8 +77,8 @@ export default async function ContactDetailPage({
             ["Phone", contact.phone ?? "—"],
             ["WhatsApp", contact.whatsappNumber ?? "—"],
             ["Account", contact.account?.company ?? "—"],
-            ["Created", formatDatePK(contact.createdAt)],
-            ["Updated", formatDatePK(contact.updatedAt)],
+            ["Created", formatDate(contact.createdAt)],
+            ["Updated", formatDate(contact.updatedAt)],
           ].map(([label, value]) => (
             <div key={label} className="bg-surface px-4 py-3">
               <div className="section-kicker">{label}</div>
@@ -131,7 +130,7 @@ export default async function ContactDetailPage({
                 >
                   <div className="text-sm font-medium">{o.name}</div>
                   <div className="mt-1 text-xs text-muted">
-                    {o.stage.name} · {formatCurrency(Number(o.value))}
+                    {o.stage.name} · {formatMoney(Number(o.value))}
                   </div>
                 </Link>
               ))
@@ -153,7 +152,7 @@ export default async function ContactDetailPage({
                 >
                   <div className="text-sm font-medium">{p.title}</div>
                   <div className="mt-1 text-xs text-muted">
-                    {p.propertyType} · {formatCurrency(Number(p.price), p.currency)}
+                    {p.propertyType} · {formatMoney(Number(p.price), p.currency)}
                   </div>
                 </Link>
               ))
@@ -171,7 +170,7 @@ export default async function ContactDetailPage({
                 <div key={ev.id} className="px-4 py-3">
                   <div className="text-sm font-medium">{ev.title}</div>
                   <div className="mono mt-1 text-[11px] text-muted">
-                    {formatDateTimePK(ev.startAt)}
+                    {formatDateTime(ev.startAt)}
                   </div>
                 </div>
               ))

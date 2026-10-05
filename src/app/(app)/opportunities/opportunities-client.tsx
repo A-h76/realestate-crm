@@ -6,10 +6,11 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useCan } from "@/components/providers/permissions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { formatCurrency, formatDatePK } from "@/lib/format";
+import { formatMoney, formatDate } from "@/lib/format";
 
 export type OpportunityListItem = {
   id: string;
@@ -49,6 +50,7 @@ export function OpportunitiesClient({
   /** Arrived via /opportunities?leadId=... (e.g. the Lead page's "Start the first property opportunity" link) — opens the create form pre-pointed at that lead. */
   prefillLeadId?: string | null;
 }) {
+  const canWrite = useCan("crm:write");
   const router = useRouter();
   const [opps, setOpps] = useState(initialOpportunities);
   const [open, setOpen] = useState(Boolean(prefillLeadId));
@@ -123,15 +125,17 @@ export function OpportunitiesClient({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button type="button" variant="accent" size="sm" onClick={() => setOpen(true)}>
-          <Plus className="h-4 w-4" />
-          New opportunity
-        </Button>
-      </div>
+      {canWrite ? (
+        <div className="flex justify-end">
+          <Button type="button" variant="accent" size="sm" onClick={() => setOpen(true)}>
+            <Plus className="h-4 w-4" />
+            New opportunity
+          </Button>
+        </div>
+      ) : null}
 
       {error ? (
-        <div className="border border-danger/30 bg-red-50 px-3 py-2 text-sm text-danger">{error}</div>
+        <div role="alert" className="border border-danger/30 bg-red-50 px-3 py-2 text-sm text-danger">{error}</div>
       ) : null}
 
       <div className="overflow-x-auto border border-border bg-surface">
@@ -182,8 +186,8 @@ export function OpportunitiesClient({
                       </Badge>
                     </td>
                     <td className="px-3 py-2 text-muted">{o.stage.name}</td>
-                    <td className="px-3 py-2 mono">{formatCurrency(Number(o.value))}</td>
-                    <td className="px-3 py-2 mono text-muted">{formatCurrency(weighted)}</td>
+                    <td className="px-3 py-2 mono">{formatMoney(Number(o.value))}</td>
+                    <td className="px-3 py-2 mono text-muted">{formatMoney(weighted)}</td>
                     <td className="px-3 py-2 mono">{daysBetween(o.createdAt)}</td>
                     <td className="px-3 py-2 mono">{daysBetween(o.stageEnteredAt)}</td>
                     <td className="px-3 py-2">
@@ -200,7 +204,7 @@ export function OpportunitiesClient({
                     </td>
                     <td className="px-3 py-2 text-muted">{o.owner?.name ?? "—"}</td>
                     <td className="px-3 py-2 mono text-[11px] text-muted">
-                      {formatDatePK(o.expectedCloseDate)}
+                      {formatDate(o.expectedCloseDate)}
                     </td>
                   </tr>
                 );
@@ -245,7 +249,7 @@ export function OpportunitiesClient({
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="value">Value (PKR)</Label>
+                  <Label htmlFor="value">Value (USD)</Label>
                   <Input
                     id="value"
                     type="number"

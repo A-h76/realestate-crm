@@ -1,13 +1,18 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
-import type { Session } from "next-auth";
-import { auth } from "@/lib/auth";
+import { getActiveSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { isDemoMode } from "@/lib/demo-mode";
 import type { WorkspaceRole } from "@prisma/client";
 
-export async function requireAppAccess() {
-  const session = (await auth()) as Session | null;
-  if (!session?.user?.id || !session.user.workspaceId) {
+/**
+ * DAL gate for every server-rendered page: active server-side session + live membership.
+ * Pages must call this themselves — the (app) layout's call does not protect them
+ * (layouts render in parallel and are skipped on client navigation). cache() dedupes per request.
+ */
+export const requireAppAccess = cache(async () => {
+  const session = await getActiveSession();
+  if (!session) {
     redirect("/login");
   }
 
@@ -28,6 +33,10 @@ export async function requireAppAccess() {
           isDemo: true,
           deletedAt: true,
           branding: true,
+          // Locale settings the shell and pages format with (see @/lib/workspace/locale).
+          timezone: true,
+          currency: true,
+          region: true,
         },
       },
     },
@@ -45,4 +54,4 @@ export async function requireAppAccess() {
     workspace: membership.workspace,
     demoMode: isDemoMode() || membership.workspace.isDemo,
   };
-}
+});

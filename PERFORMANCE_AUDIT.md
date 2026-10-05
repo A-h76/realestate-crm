@@ -1,5 +1,7 @@
 # Performance Audit
 
+> **Historical record.** Measurements predate the US-market conversion; the Lahore weather badge and Pakistan sample data it mentions no longer exist in the app.
+
 **Product:** Synas Labs Lead-to-Sale CRM  
 **Date:** 2026-09-19  
 **Environment:** local Windows, PostgreSQL `leadtosale_crm` @ `localhost:5432`  

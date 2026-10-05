@@ -6,6 +6,7 @@
  * bounded, timeout-guarded, JSON-only completion call. Never imported by
  * client code — only ever called from server-side lib/API modules.
  */
+import { logEvent } from "@/lib/log";
 export type AIProvider = {
   readonly name: string;
   /** Single structured JSON completion. Resolves to null on any failure (timeout, HTTP error, invalid JSON) — callers must always have a deterministic fallback, never throw. */
@@ -45,7 +46,10 @@ export class OpenAIProvider implements AIProvider {
         }),
         signal: controller.signal,
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        logEvent("warn", "ai_provider_failed", { provider: "openai", httpStatus: res.status });
+        return null;
+      }
       const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
       const content = data.choices?.[0]?.message?.content;
       if (!content) return null;
@@ -54,9 +58,10 @@ export class OpenAIProvider implements AIProvider {
       } catch {
         return null;
       }
-    } catch {
+    } catch (error) {
       // Timeout, network error, or anything else — the caller's deterministic
       // fallback takes over. This must never throw into the webhook path.
+      logEvent("warn", "ai_provider_failed", { provider: "openai", error: error instanceof Error ? error.name : "unknown" });
       return null;
     } finally {
       clearTimeout(timeout);

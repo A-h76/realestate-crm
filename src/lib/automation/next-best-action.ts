@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { filterAndScoreProperties } from "@/lib/matching/properties";
 import { loadLeadContext, leadDisplayName, type LeadContext } from "@/lib/ai/context";
 
@@ -62,7 +62,7 @@ export function computeNextBestAction(ctx: LeadContext): NextBestAction {
   if ((opp?.stage.slug === "discovery" || lead.stage === "QUALIFIED") && !hasVisit && lead.intentType !== "SELL") {
     return {
       code: "SCHEDULE_SITE_VISIT",
-      title: "Schedule site visit",
+      title: "Schedule showing",
       detail: `${name} · ${lead.preferredArea ?? "area TBC"}`,
       reason: "Discovery / qualified with no site visit.",
       href,
@@ -75,7 +75,7 @@ export function computeNextBestAction(ctx: LeadContext): NextBestAction {
     return {
       code: "FOLLOW_UP_PROPOSAL",
       title: "Follow up",
-      detail: `${opp.name} · ${formatCurrency(Number(opp.value))}`,
+      detail: `${opp.name} · ${formatMoney(Number(opp.value))}`,
       reason: "Proposal stage with no follow-up task.",
       href: `/opportunities/${opp.id}`,
       priority: "high",
@@ -87,7 +87,7 @@ export function computeNextBestAction(ctx: LeadContext): NextBestAction {
     return {
       code: "CONTACT_DECISION_MAKER",
       title: "Contact decision maker",
-      detail: `${opp.name} · ${formatCurrency(Number(opp.value))}`,
+      detail: `${opp.name} · ${formatMoney(Number(opp.value))}`,
       reason: "Negotiation + high value.",
       href: `/opportunities/${opp.id}`,
       priority: "high",

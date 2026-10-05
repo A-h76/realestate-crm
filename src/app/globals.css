@@ -3,15 +3,19 @@
 :root {
   --background: #f8f9fc;
   --foreground: #111827;
-  --muted: #6b7280;
+  --muted: #4b5563;
   --border: #e5e7eb;
   --accent: #00dccd;
   --accent-soft: rgba(0, 220, 205, 0.12);
+  /* Darker text-only variant of --accent: the base cyan is ~1.7:1 on white, fails WCAG AA as text. */
+  --accent-text: #0f766e;
   --surface: #ffffff;
-  --danger: #dc3545;
-  --warning: #fc9c07;
-  --success: #198754;
-  --info: #0d6efd;
+  /* Status colors below are tuned to meet WCAG AA (4.5:1) as text on their paired *-50 badge tints;
+     none of them are used as fill backgrounds, so darkening here has no effect on existing badges/buttons. */
+  --danger: #b91c1c;
+  --warning: #b45309;
+  --success: #15803d;
+  --info: #1d4ed8;
   --brand: #423a8e;
   --header-h: 64px;
   --sidebar: #423a8e;
@@ -30,6 +34,7 @@
   --color-muted: var(--muted);
   --color-border: var(--border);
   --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
   --color-accent-soft: var(--accent-soft);
   --color-surface: var(--surface);
   --color-danger: var(--danger);

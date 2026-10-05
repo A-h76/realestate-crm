@@ -1,10 +1,11 @@
-import type { Automation, AutomationTrigger, Prisma } from "@prisma/client";
+import { Prisma, type Automation, type AutomationTrigger } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { analyzeLead } from "@/lib/ai/lead-analysis";
 import { explainPropertyMatches } from "@/lib/ai/property-match";
-import { notify } from "@/lib/notifications";
+import { notify, notifyOnce } from "@/lib/notifications";
 import { scoreLead } from "@/lib/scoring/score-lead";
+import { logEvent } from "@/lib/log";
 import { measureExecution } from "@/lib/perf";
 
 export type AutomationEvent = {
@@ -14,7 +15,36 @@ export type AutomationEvent = {
   leadId?: string | null;
   opportunityId?: string | null;
   payload?: Record<string, unknown>;
+  /**
+   * Stable identity of the real-world event (e.g. `lead-created:<id>`). When present, CREATE_TASK and
+   * NOTIFY actions are idempotent for it: a retry, replay or concurrent duplicate trigger creates the
+   * task/notification at most once (DB unique index on dedupeKey). Omit it only where every trigger
+   * is genuinely a new occurrence.
+   */
+  eventKey?: string;
 };
+
+/** Bounds for one synchronous run (AUTO-005). Mutable only so tests can lower them. */
+export const automationLimits = { actionTimeoutMs: 20_000, maxActionsPerEvent: 50 };
+
+/** UTC day, for "at most once per lead per day" event keys. */
+export function dayBucket(date = new Date()): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Automation action timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
+
+const DUPLICATE_RESULT = "skipped:duplicate";
 
 type ActionDef = {
   type: string;
@@ -63,7 +93,37 @@ async function ownerFor(event: AutomationEvent) {
   return event.actorId ?? null;
 }
 
-async function executeAction(event: AutomationEvent, action: ActionDef) {
+/**
+ * Writes one audit row. When `buffer` is supplied (CSV import's per-row loop), the row is queued
+ * in memory instead of written immediately, so the caller can flush the whole batch with one
+ * `auditLog.createMany()` instead of one round trip per row. Every other caller omits `buffer`
+ * and gets today's exact behavior: an immediate, individual `writeAudit`.
+ */
+async function recordAudit(
+  buffer: Prisma.AuditLogCreateManyInput[] | undefined,
+  input: Parameters<typeof writeAudit>[0],
+): Promise<void> {
+  if (buffer) {
+    buffer.push({
+      workspaceId: input.workspaceId,
+      actorId: input.actorId ?? null,
+      action: input.action,
+      entity: input.entity,
+      entityId: input.entityId,
+      metadata: input.metadata,
+      createdAt: new Date(),
+    });
+    return;
+  }
+  await writeAudit(input);
+}
+
+async function executeAction(
+  event: AutomationEvent,
+  action: ActionDef,
+  auditBuffer: Prisma.AuditLogCreateManyInput[] | undefined,
+  dedupeKey: string | null,
+) {
   const ownerId = await ownerFor(event);
   const due = new Date();
   due.setDate(due.getDate() + (action.dueInDays ?? 1));
@@ -78,7 +138,9 @@ async function executeAction(event: AutomationEvent, action: ActionDef) {
         typeof event.payload?.siteVisitId === "string" ? event.payload.siteVisitId : null;
       const title =
         action.title && proposalNumber ? `${action.title} ${proposalNumber}` : (action.title ?? "Follow up");
-      const task = await prisma.task.create({
+      let task: Awaited<ReturnType<typeof prisma.task.create>>;
+      try {
+        task = await prisma.task.create({
         data: {
           workspaceId: event.workspaceId,
           title,
@@ -91,9 +153,14 @@ async function executeAction(event: AutomationEvent, action: ActionDef) {
           opportunityId: event.opportunityId ?? null,
           proposalId,
           siteVisitId,
+          dedupeKey,
         },
       });
-      await writeAudit({
+      } catch (error) {
+        if (dedupeKey && isUniqueViolation(error)) return DUPLICATE_RESULT;
+        throw error;
+      }
+      await recordAudit(auditBuffer, {
         workspaceId: event.workspaceId,
         actorId: event.actorId,
         action: "TASK_CREATED",
@@ -157,7 +224,7 @@ async function executeAction(event: AutomationEvent, action: ActionDef) {
     }
     case "NOTIFY": {
       if (!ownerId) return "skipped:no-owner";
-      const n = await notify({
+      const payload = {
         workspaceId: event.workspaceId,
         userId: ownerId,
         type: action.notifyType ?? "HIGH_VALUE_LEAD",
@@ -166,17 +233,47 @@ async function executeAction(event: AutomationEvent, action: ActionDef) {
         href: event.leadId ? `/leads/${event.leadId}` : event.opportunityId ? `/opportunities/${event.opportunityId}` : "/dashboard",
         entityType: event.opportunityId ? "Opportunity" : "Lead",
         entityId: event.opportunityId ?? event.leadId ?? undefined,
-      });
-      return `notification:${n.id}`;
+      };
+      const n = dedupeKey ? await notifyOnce({ ...payload, dedupeKey }) : await notify(payload);
+      return n ? `notification:${n.id}` : DUPLICATE_RESULT;
     }
     default:
       return `skipped:unknown:${action.type}`;
   }
 }
 
-export async function runAutomations(event: AutomationEvent) {
+/** A row the engine could not persist. The action's real outcome (`status`) is still carried —
+ * it is never upgraded to a false SUCCESS just because the bookkeeping write failed (Finding F1). */
+export type UnpersistedAutomationResult = {
+  persisted: false;
+  status: "SUCCESS" | "FAILED" | "SKIPPED";
+  automationId: string;
+  actionType: string;
+  leadId: string | null;
+  opportunityId: string | null;
+};
+
+type AutomationResult = Awaited<ReturnType<typeof prisma.automationExecution.create>> | UnpersistedAutomationResult;
+
+function logPersistFailure(context: Record<string, unknown>, error: unknown) {
+  logEvent("error", "automation_execution_persist_failed", { ...context, error });
+}
+
+/**
+ * `preloaded`: skip the automations lookup for callers that already fetched the
+ * same (workspaceId, trigger) rule set — e.g. a batch loop invoking this once per
+ * row would otherwise re-run an identical findMany on every iteration (measured:
+ * 500-row CSV import spent ~3.5s mostly on this redundant query, see perf-http.ts).
+ *
+ * `auditBuffer`: see `recordAudit` — passed through by CSV import to batch audit writes.
+ */
+export async function runAutomations(
+  event: AutomationEvent,
+  preloaded?: Automation[],
+  auditBuffer?: Prisma.AuditLogCreateManyInput[],
+) {
   return measureExecution(`automation.${event.trigger}`, async () => {
-  const automations = await prisma.automation.findMany({
+  const automations = preloaded ?? await prisma.automation.findMany({
     where: {
       workspaceId: event.workspaceId,
       trigger: event.trigger,
@@ -185,93 +282,187 @@ export async function runAutomations(event: AutomationEvent) {
     },
   });
 
-  const results = [];
+  const results: AutomationResult[] = [];
   for (const automation of automations) {
     if (!conditionsPass(automation, event)) {
-      const skipped = await prisma.automationExecution.create({
-        data: {
-          workspaceId: event.workspaceId,
+      try {
+        const skipped = await prisma.automationExecution.create({
+          data: {
+            workspaceId: event.workspaceId,
+            automationId: automation.id,
+            trigger: event.trigger,
+            leadId: event.leadId ?? null,
+            opportunityId: event.opportunityId ?? null,
+            action: "conditions",
+            result: "Conditions not met",
+            status: "SKIPPED",
+            durationMs: 0,
+          },
+        });
+        results.push(skipped);
+      } catch (error) {
+        // Nothing ran (conditions simply didn't match) — only the record of that fact failed to
+        // save. Diagnose and continue: an already-committed lead import must not be reported as
+        // failed over a bookkeeping write (Finding F1).
+        logPersistFailure(
+          {
+            workspaceId: event.workspaceId,
+            trigger: event.trigger,
+            automationId: automation.id,
+            actionType: "conditions",
+            leadId: event.leadId ?? null,
+            opportunityId: event.opportunityId ?? null,
+          },
+          error,
+        );
+        results.push({
+          persisted: false,
+          status: "SKIPPED",
           automationId: automation.id,
-          trigger: event.trigger,
+          actionType: "conditions",
           leadId: event.leadId ?? null,
           opportunityId: event.opportunityId ?? null,
-          action: "conditions",
-          result: "Conditions not met",
-          status: "SKIPPED",
-          durationMs: 0,
-        },
-      });
-      results.push(skipped);
+        });
+      }
       continue;
     }
 
-    const actions = asActions(automation.actions);
-    for (const action of actions) {
-      const started = Date.now();
-      const execution = await prisma.automationExecution.create({
-        data: {
-          workspaceId: event.workspaceId,
-          automationId: automation.id,
-          trigger: event.trigger,
-          leadId: event.leadId ?? null,
-          opportunityId: event.opportunityId ?? null,
-          action: action.type,
-          status: "RUNNING",
-        },
-      });
+    const allActions = asActions(automation.actions);
+    const actions = allActions.slice(0, automationLimits.maxActionsPerEvent);
+    if (actions.length < allActions.length) {
+      logEvent("warn", "automation_actions_truncated", { automationId: automation.id, defined: allActions.length, ran: actions.length });
+    }
+    for (const [actionIndex, action] of actions.entries()) {
+      const dedupeKey = event.eventKey ? `auto:${automation.id}:${actionIndex}:${event.eventKey}` : null;
+      const startedAt = new Date();
 
+      // Run the action first; decide success/failure from what actually happened. The
+      // bookkeeping write below is attempted afterward and independently, so a failure to
+      // persist it can never be reported as the action having succeeded (Finding F1).
+      let outcome: { status: "SUCCESS" | "SKIPPED"; result: string } | { status: "FAILED"; error: string };
       try {
-        const result = await executeAction(event, action);
-        const updated = await prisma.automationExecution.update({
-          where: { id: execution.id },
-          data: {
-            status: "SUCCESS",
-            result,
-            durationMs: Date.now() - started,
-          },
-        });
-        await writeAudit({
-          workspaceId: event.workspaceId,
-          actorId: event.actorId,
-          action: "AUTOMATION_EXECUTED",
-          entity: "AutomationExecution",
-          entityId: updated.id,
-          metadata: { trigger: event.trigger, action: action.type, result },
-        });
-        results.push(updated);
+        const result = await withTimeout(
+          executeAction(event, action, auditBuffer, dedupeKey),
+          automationLimits.actionTimeoutMs,
+        );
+        outcome = { status: result === DUPLICATE_RESULT ? "SKIPPED" : "SUCCESS", result };
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Automation action failed";
-        const failed = await prisma.automationExecution.update({
-          where: { id: execution.id },
-          data: {
-            status: "FAILED",
-            error: message,
-            durationMs: Date.now() - started,
-            retryCount: { increment: 1 },
-          },
-        });
-        await writeAudit({
+        outcome = {
+          status: "FAILED",
+          error: error instanceof Error ? error.message : "Automation action failed",
+        };
+      }
+
+      if (outcome.status === "FAILED") {
+        logEvent("error", "automation_action_failed", {
           workspaceId: event.workspaceId,
-          actorId: event.actorId,
-          action: "AUTOMATION_FAILED",
-          entity: "AutomationExecution",
-          entityId: failed.id,
-          metadata: { trigger: event.trigger, action: action.type, error: message },
+          trigger: event.trigger,
+          automationId: automation.id,
+          actionType: action.type,
+          error: outcome.error,
         });
-        if (event.actorId) {
+      }
+
+      if (outcome.status === "FAILED" && event.actorId) {
+        try {
           await notify({
             workspaceId: event.workspaceId,
             userId: event.actorId,
             type: "AUTOMATION_FAILED",
             title: `Automation failed: ${automation.name}`,
-            body: message,
+            body: outcome.error,
             href: "/automations",
             entityType: "Automation",
             entityId: automation.id,
           });
+        } catch (notifyError) {
+          logPersistFailure(
+            {
+              workspaceId: event.workspaceId,
+              trigger: event.trigger,
+              automationId: automation.id,
+              actionType: action.type,
+              leadId: event.leadId ?? null,
+              opportunityId: event.opportunityId ?? null,
+              stage: "failure-notify",
+            },
+            notifyError,
+          );
         }
-        results.push(failed);
       }
+
+      // One write reflecting the real outcome, instead of an insert(RUNNING) + update(final) —
+      // same status/timestamp/failure semantics, half the round trips. `createdAt` is pinned to
+      // `startedAt` so it keeps meaning "when this action began", exactly as the old RUNNING
+      // insert's createdAt did.
+      let execution: Awaited<ReturnType<typeof prisma.automationExecution.create>>;
+      try {
+        execution = await prisma.automationExecution.create({
+          data: {
+            workspaceId: event.workspaceId,
+            automationId: automation.id,
+            trigger: event.trigger,
+            leadId: event.leadId ?? null,
+            opportunityId: event.opportunityId ?? null,
+            action: action.type,
+            status: outcome.status,
+            result: outcome.status !== "FAILED" ? outcome.result : null,
+            error: outcome.status === "FAILED" ? outcome.error : null,
+            retryCount: outcome.status === "FAILED" ? 1 : 0,
+            durationMs: Date.now() - startedAt.getTime(),
+            createdAt: startedAt,
+          },
+        });
+      } catch (error) {
+        logPersistFailure(
+          {
+            workspaceId: event.workspaceId,
+            trigger: event.trigger,
+            automationId: automation.id,
+            actionType: action.type,
+            leadId: event.leadId ?? null,
+            opportunityId: event.opportunityId ?? null,
+            actionOutcome: outcome.status,
+          },
+          error,
+        );
+        results.push({
+          persisted: false,
+          status: outcome.status,
+          automationId: automation.id,
+          actionType: action.type,
+          leadId: event.leadId ?? null,
+          opportunityId: event.opportunityId ?? null,
+        });
+        continue;
+      }
+
+      if (outcome.status === "SKIPPED") {
+        results.push(execution); // already done for this event: recorded, but not an executed action
+        continue;
+      }
+
+      await recordAudit(
+        auditBuffer,
+        outcome.status === "FAILED"
+          ? {
+              workspaceId: event.workspaceId,
+              actorId: event.actorId,
+              action: "AUTOMATION_FAILED",
+              entity: "AutomationExecution",
+              entityId: execution.id,
+              metadata: { trigger: event.trigger, action: action.type, error: outcome.error },
+            }
+          : {
+              workspaceId: event.workspaceId,
+              actorId: event.actorId,
+              action: "AUTOMATION_EXECUTED",
+              entity: "AutomationExecution",
+              entityId: execution.id,
+              metadata: { trigger: event.trigger, action: action.type, result: outcome.result },
+            },
+      );
+      results.push(execution);
     }
   }
 
@@ -340,7 +531,7 @@ export const DEFAULT_AUTOMATIONS: Array<{
   },
   {
     id: "auto_lead_inactive",
-    name: "Lead inactive → WhatsApp re-engagement",
+    name: "Lead inactive → follow-up task",
     trigger: "LEAD_INACTIVE",
     actions: [{ type: "CREATE_TASK", title: "Re-engage via WhatsApp", priority: "MEDIUM", dueInDays: 1 }],
   },
@@ -379,27 +570,92 @@ export async function seedDefaultAutomations(workspaceId: string) {
   }
 }
 
-export async function evaluateInactiveLeads(workspaceId: string, actorId?: string | null) {
+/**
+ * AUTO-002 scheduled entry point (scripts/run-inactive-lead-automations.ts, daily).
+ *  - Eligibility: not LOST/ARCHIVED/CONVERTED, not soft-deleted, no activity for 14 days (rolling 14x24h,
+ *    so timezone-independent). Oldest-inactive first, at most 25 leads per workspace per run; a larger
+ *    backlog drains over successive runs.
+ *  - Idempotency: a lead with a non-FAILED LEAD_INACTIVE execution inside the window is skipped, so a daily
+ *    run does not re-action it. A FAILED execution does not block the lead: the next run retries it.
+ *  - Duplicate-run prevention: a per-workspace Postgres advisory lock is held for the whole evaluation, so a
+ *    cron run overlapping another cron run, a second app instance or the manual POST /api/automations
+ *    returns [] for that workspace instead of double-actioning leads (the skip list is read before the
+ *    executions are written, so without the lock two concurrent runs would both act).
+ * Per-action idempotency keys for retries inside runAutomations itself remain AUTO-003 (Batch 2).
+ */
+export async function evaluateInactiveLeads(
+  workspaceId: string,
+  actorId?: string | null,
+  options: { deadlineMs?: number; state?: { truncated: boolean } } = {},
+) {
+  return prisma.$transaction(
+    async (tx) => {
+      const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`
+        SELECT pg_try_advisory_xact_lock(hashtext(${`inactive-leads:${workspaceId}`})) AS locked`;
+      if (!locked) return [];
+      return evaluateInactiveLeadsLocked(workspaceId, actorId, options);
+    },
+    // The transaction only holds the lock; the evaluation itself uses the shared client.
+    { timeout: 5 * 60_000, maxWait: 5_000 },
+  );
+}
+
+async function evaluateInactiveLeadsLocked(
+  workspaceId: string,
+  actorId: string | null | undefined,
+  options: { deadlineMs?: number; state?: { truncated: boolean } },
+) {
+  const deadline = options.deadlineMs ? Date.now() + options.deadlineMs : null;
   const cutoff = new Date(Date.now() - 14 * 86400000);
+  const automations = await prisma.automation.findMany({
+    where: { workspaceId, trigger: "LEAD_INACTIVE", enabled: true, paused: false },
+  });
+  if (automations.length === 0) return [];
+
+  const recentlyProcessed = await prisma.automationExecution.findMany({
+    where: {
+      workspaceId,
+      trigger: "LEAD_INACTIVE",
+      createdAt: { gte: cutoff },
+      leadId: { not: null },
+      status: { not: "FAILED" },
+    },
+    distinct: ["leadId"],
+    select: { leadId: true },
+  });
+  const skipIds = recentlyProcessed.map((r) => r.leadId).filter((id): id is string => id !== null);
+
   const leads = await prisma.lead.findMany({
     where: {
       workspaceId,
       deletedAt: null,
       stage: { notIn: ["LOST", "ARCHIVED", "CONVERTED"] },
       OR: [{ lastActivityAt: { lt: cutoff } }, { lastActivityAt: null }],
+      id: { notIn: skipIds },
     },
+    orderBy: [{ lastActivityAt: "asc" }],
     take: 25,
     select: { id: true },
   });
   const results = [];
+  const windowKey = Math.floor(Date.now() / (14 * 86400000));
   for (const lead of leads) {
+    // Time budget (AUTO-005): stop starting new leads once exceeded; the rest are picked up next run.
+    if (deadline && Date.now() > deadline) {
+      if (options.state) options.state.truncated = true;
+      break;
+    }
     results.push(
-      ...(await runAutomations({
-        workspaceId,
-        actorId,
-        trigger: "LEAD_INACTIVE",
-        leadId: lead.id,
-      })),
+      ...(await runAutomations(
+        {
+          workspaceId,
+          actorId,
+          trigger: "LEAD_INACTIVE",
+          leadId: lead.id,
+          eventKey: `inactive:${lead.id}:${windowKey}`,
+        },
+        automations,
+      )),
     );
   }
   return results;

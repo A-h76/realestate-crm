@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import type { Session } from "next-auth";
 import type { WorkspaceRole } from "@prisma/client";
-import { auth } from "@/lib/auth";
+import { getActiveSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { ApiError } from "@/lib/errors";
 import { roleHasPermission, type Permission } from "@/lib/authz";
 import { enforceRateLimit, type RateLimitSpec } from "@/lib/rate-limit";
 import { getRequestId, measureExecution } from "@/lib/perf";
+import { logEvent } from "@/lib/log";
 import { logSecurityEvent } from "@/lib/security/log";
 
 const SECURITY_TRACE_STATUSES = new Set([401, 403, 429]);
@@ -22,8 +23,8 @@ export type WorkspaceAccess = {
 
 export async function requireSession(): Promise<Session> {
   return measureExecution("auth.session", async () => {
-    const session = (await auth()) as Session | null;
-    if (!session?.user?.id || !session.user.workspaceId) {
+    const session = await getActiveSession();
+    if (!session) {
       throw new ApiError(401, "Unauthorized");
     }
     return session;
@@ -107,11 +108,16 @@ export function jsonError(error: unknown) {
       logSecurityEvent({ status: error.status, message: error.message });
     }
     return NextResponse.json(
-      { error: error.message },
+      { error: error.message, ...error.details },
       { status: error.status, headers: requestIdHeaders(error.headers) },
     );
   }
-  console.error(error instanceof Error ? error.message : "unhandled_error");
+  // request.json() on a malformed body: client error, not a server fault.
+  if (error instanceof SyntaxError) {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400, headers: requestIdHeaders() });
+  }
+  // First line only: Prisma messages can echo query arguments (PII) on later lines.
+  logEvent("error", "unhandled_error", { error: error instanceof Error ? error : "non-error value thrown" });
   return NextResponse.json(
     { error: "Internal server error" },
     { status: 500, headers: requestIdHeaders() },

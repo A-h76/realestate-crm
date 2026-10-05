@@ -36,7 +36,7 @@ async function login() {
   let jar = mergeCookies([], cookies);
   const body = new URLSearchParams({
     csrfToken,
-    email: process.env.E2E_EMAIL ?? "ahmed@synaslabs.demo",
+    email: process.env.E2E_EMAIL ?? "dana@synaslabs.demo",
     password,
     callbackUrl: `${BASE}/dashboard`,
     json: "true",
@@ -99,27 +99,27 @@ async function main() {
   const lead = await api(cookieHeader, "POST", "/api/leads", {
     firstName: "E2E",
     lastName: "Buyer",
-    whatsappNumber: "+923001234567",
-    phone: "+923001234567",
+    whatsappNumber: "+14155550123",
+    phone: "+14155550123",
     source: "WHATSAPP_INBOUND",
     intentType: "BUY",
-    preferredArea: "DHA Phase 6",
-    propertyTypePref: "HOUSE",
+    preferredArea: "Lincoln Park",
+    propertyTypePref: "SINGLE_FAMILY",
     propertyPurpose: "SALE",
     bedroomPref: 5,
-    budgetMin: 50000000,
-    budgetMax: 100000000,
+    budgetMin: 1_600_000,
+    budgetMax: 2_000_000,
     ownerId: user.id,
-    estimatedValue: 85000000,
+    estimatedValue: 1_800_000,
   });
   console.log("  lead", lead.id);
 
   console.log("E2E: create opportunity…");
   const opp = await api(cookieHeader, "POST", "/api/opportunities", {
-    name: "E2E Buyer — DHA Phase 6",
+    name: "E2E Buyer — Lincoln Park",
     dealSide: "BUYER",
-    value: 85000000,
-    currency: "PKR",
+    value: 1_800_000,
+    currency: "USD",
     stageId: stageBySlug.new.id,
     leadId: lead.id,
     linkedPropertyId: property.id,
@@ -166,22 +166,22 @@ async function main() {
   console.log("E2E: log WhatsApp…");
   const wa = await api(cookieHeader, "POST", "/api/whatsapp/messages", {
     conversationId: `lead:${lead.id}`,
-    body: "Assalam o Alaikum — confirming site visit interest.",
+    body: "Hi — confirming your interest in a showing.",
     leadId: lead.id,
     opportunityId: opp.id,
   });
   if (!wa.demo) throw new Error("Expected demo WhatsApp response");
   console.log(" ", wa.notice);
 
-  console.log("E2E: schedule site visit…");
+  console.log("E2E: schedule showing…");
   const start = new Date(Date.now() + 36 * 3600000);
   const end = new Date(start.getTime() + 2 * 3600000);
   const cal = await api(cookieHeader, "POST", "/api/calendar", {
-    title: "E2E Site Visit — DHA Phase 6",
+    title: "E2E Showing — Lincoln Park",
     type: "SITE_VISIT",
     startAt: start.toISOString(),
     endAt: end.toISOString(),
-    location: "DHA Phase 6, Lahore",
+    location: "2214 N Cleveland Ave, Chicago, IL 60614",
     leadId: lead.id,
     opportunityId: opp.id,
   });
@@ -190,7 +190,7 @@ async function main() {
 
   const events = await api(cookieHeader, "GET", "/api/calendar");
   if (!events.items.some((e: { id: string }) => e.id === cal.id)) {
-    throw new Error("Site visit missing from calendar list");
+    throw new Error("Showing missing from calendar list");
   }
 
   console.log("E2E: move to Proposal…");

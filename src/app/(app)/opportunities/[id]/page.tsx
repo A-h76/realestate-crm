@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireAppAccess } from "@/lib/app-access";
 import { prisma } from "@/lib/db";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { PageHeader, SectionHeading } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency, formatDatePK, formatDateTimePK } from "@/lib/format";
+import { formatMoney, formatDate, formatDateTime } from "@/lib/format";
 
 function daysBetween(from: Date, to = new Date()) {
   return Math.max(0, Math.floor((to.getTime() - from.getTime()) / 86400000));
@@ -16,12 +16,11 @@ export default async function OpportunityDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user) return null;
+  const { workspaceId } = await requireAppAccess();
   const { id } = await params;
 
   const opp = await prisma.opportunity.findFirst({
-    where: { id, workspaceId: session.user.workspaceId, deletedAt: null },
+    where: { id, workspaceId: workspaceId, deletedAt: null },
     include: {
       stage: true,
       owner: true,
@@ -72,12 +71,12 @@ export default async function OpportunityDetailPage({
         <SectionHeading>Deal metrics</SectionHeading>
         <div className="grid gap-px border border-border bg-border sm:grid-cols-4">
           {[
-            ["Value", formatCurrency(Number(opp.value))],
-            ["Weighted value", formatCurrency(weighted)],
+            ["Value", formatMoney(Number(opp.value))],
+            ["Weighted value", formatMoney(weighted)],
             ["Probability", `${prob}%`],
             ["Days open", String(daysBetween(opp.createdAt))],
             ["Days in stage", String(daysBetween(opp.stageEnteredAt))],
-            ["Expected close", formatDatePK(opp.expectedCloseDate)],
+            ["Expected close", formatDate(opp.expectedCloseDate)],
             ["Owner", opp.owner?.name ?? "—"],
             ["Source", opp.source?.replaceAll("_", " ") ?? "—"],
           ].map(([label, value]) => (
@@ -156,7 +155,7 @@ export default async function OpportunityDetailPage({
                     <span className="text-sm font-medium">{p.proposalNumber}</span>
                     <Badge tone="neutral">{p.status}</Badge>
                   </div>
-                  <div className="mt-1 text-xs text-muted">{formatCurrency(Number(p.value))}</div>
+                  <div className="mt-1 text-xs text-muted">{formatMoney(Number(p.value))}</div>
                 </div>
               ))
             )}
@@ -173,7 +172,7 @@ export default async function OpportunityDetailPage({
                 <div key={t.id} className="px-4 py-3">
                   <div className="text-sm font-medium">{t.title}</div>
                   <div className="mono mt-1 text-[11px] text-muted">
-                    {t.status} · {formatDatePK(t.dueAt)}
+                    {t.status} · {formatDate(t.dueAt)}
                   </div>
                 </div>
               ))
@@ -191,7 +190,7 @@ export default async function OpportunityDetailPage({
                 <div key={ev.id} className="px-4 py-3">
                   <div className="text-sm font-medium">{ev.title}</div>
                   <div className="mono mt-1 text-[11px] text-muted">
-                    {formatDateTimePK(ev.startAt)}
+                    {formatDateTime(ev.startAt)}
                   </div>
                 </div>
               ))
@@ -212,7 +211,7 @@ export default async function OpportunityDetailPage({
                 <div key={n.id} className="px-4 py-3">
                   <p className="text-sm whitespace-pre-wrap">{n.body}</p>
                   <div className="mono mt-1 text-[11px] text-muted">
-                    {formatDateTimePK(n.createdAt)}
+                    {formatDateTime(n.createdAt)}
                   </div>
                 </div>
               ))

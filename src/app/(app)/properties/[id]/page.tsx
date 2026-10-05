@@ -1,22 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireAppAccess } from "@/lib/app-access";
 import { prisma } from "@/lib/db";
 import { PageHeader, SectionHeading } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency, formatDatePK, formatPKR } from "@/lib/format";
+import { formatMoney, formatDate } from "@/lib/format";
 
 export default async function PropertyDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user) return null;
+  const { workspaceId } = await requireAppAccess();
   const { id } = await params;
 
   const property = await prisma.property.findFirst({
-    where: { id, workspaceId: session.user.workspaceId, deletedAt: null },
+    where: { id, workspaceId: workspaceId, deletedAt: null },
     include: {
       assignedAgent: true,
       ownerContact: true,
@@ -60,7 +59,7 @@ export default async function PropertyDetailPage({
         <SectionHeading>Listing</SectionHeading>
         <div className="grid gap-px border border-border bg-border sm:grid-cols-3">
           {[
-            ["Price", formatPKR(Number(property.price))],
+            ["Price", formatMoney(Number(property.price))],
             ["Type", property.propertyType],
             ["Purpose", property.purpose],
             ["Area", property.area ?? "—"],
@@ -80,8 +79,8 @@ export default async function PropertyDetailPage({
                 ? `${property.ownerContact.firstName} ${property.ownerContact.lastName ?? ""}`.trim()
                 : "—",
             ],
-            ["Date listed", formatDatePK(property.dateListed)],
-            ["Last price update", formatDatePK(property.lastPriceUpdate)],
+            ["Date listed", formatDate(property.dateListed)],
+            ["Last price update", formatDate(property.lastPriceUpdate)],
             ["Address", property.address ?? "—"],
           ].map(([label, value]) => (
             <div key={label} className="bg-surface px-4 py-3">
@@ -115,7 +114,7 @@ export default async function PropertyDetailPage({
                     <Badge tone="neutral">{o.dealSide}</Badge>
                   </div>
                   <div className="mt-1 text-xs text-muted">
-                    {o.stage.name} · {formatCurrency(Number(o.value))}
+                    {o.stage.name} · {formatMoney(Number(o.value))}
                   </div>
                 </Link>
               ))
@@ -135,7 +134,7 @@ export default async function PropertyDetailPage({
                     <span className="text-sm font-medium">{p.proposalNumber}</span>
                     <Badge tone="neutral">{p.status}</Badge>
                   </div>
-                  <div className="mt-1 text-xs text-muted">{formatPKR(Number(p.value))}</div>
+                  <div className="mt-1 text-xs text-muted">{formatMoney(Number(p.value))}</div>
                 </div>
               ))
             )}

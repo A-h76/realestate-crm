@@ -1,4 +1,5 @@
 import { ApiError, jsonError, jsonOk, requirePermission } from "@/lib/api";
+import { roleHasPermission } from "@/lib/authz";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { takeOverLead } from "@/lib/leads/take-over";
 import { measuredRoute } from "@/lib/perf";
@@ -9,11 +10,11 @@ export const POST = measuredRoute(
   "POST /api/leads/:id/take-over",
   async (_request: Request, context: RouteContext) => {
     try {
-      const { workspaceId, userId } = await requirePermission("crm:write");
+      const { workspaceId, userId, role } = await requirePermission("crm:write");
       await enforceRateLimit({ key: `mut:${workspaceId}:${userId}`, ...RATE_LIMITS.mutation });
       const { id } = await context.params;
 
-      const result = await takeOverLead(workspaceId, id, userId);
+      const result = await takeOverLead(workspaceId, id, userId, { canReassign: roleHasPermission(role, "leads:assign") });
       if (!result) throw new ApiError(404, "Lead not found");
 
       return jsonOk(result);

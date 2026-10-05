@@ -21,31 +21,49 @@ import {
   Workflow,
   BarChart3,
   Rocket,
+  UsersRound,
+  Plug,
+  HeartPulse,
+  Ellipsis,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { initials } from "@/lib/dashboard-ui";
 import { roleHasPermission, type Permission } from "@/lib/authz";
 import type { WorkspaceRole } from "@prisma/client";
 
-const nav: Array<{ href: string; label: string; icon: typeof Rocket; permission?: Permission }> = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/golden-path", label: "Golden Path", icon: Rocket },
+type NavItem = { href: string; label: string; icon: typeof Rocket; permission?: Permission };
+
+/** Everyday work. Everything else lives under More (progressive disclosure). */
+export const primaryNav: NavItem[] = [
+  { href: "/dashboard", label: "Home", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: Users },
-  { href: "/opportunities", label: "Opportunities", icon: Target },
-  { href: "/pipeline", label: "Pipeline", icon: Kanban },
-  { href: "/properties", label: "Properties", icon: Home },
-  { href: "/accounts", label: "Accounts", icon: Building2 },
-  { href: "/contacts", label: "Contacts", icon: Contact },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/proposals", label: "Proposals", icon: FileText },
+  { href: "/conversations", label: "Inbox", icon: MessageCircle },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { href: "/insights", label: "Insights", icon: Sparkles },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
-  { href: "/automations", label: "Automations", icon: Workflow },
-  { href: "/settings", label: "Settings", icon: Settings },
-  { href: "/audit", label: "Audit Log", icon: ScrollText, permission: "audit:read" },
 ];
+
+export const moreNav: NavItem[] = [
+  { href: "/contacts", label: "Contacts", icon: Contact },
+  { href: "/opportunities", label: "Opportunities", icon: Target },
+  { href: "/properties", label: "Properties", icon: Home },
+  { href: "/pipeline", label: "Pipeline", icon: Kanban },
+  { href: "/tasks", label: "Tasks", icon: CheckSquare },
+  { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/team-health", label: "Team Health", icon: HeartPulse, permission: "leads:assign" },
+  { href: "/automations", label: "Automations", icon: Workflow },
+  { href: "/team", label: "Team", icon: UsersRound },
+  { href: "/integrations", label: "Integrations", icon: Plug },
+  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/accounts", label: "Companies", icon: Building2 },
+  { href: "/proposals", label: "Proposals", icon: FileText },
+  { href: "/insights", label: "Insights", icon: Sparkles },
+  { href: "/audit", label: "Activity Log", icon: ScrollText, permission: "audit:read" },
+  { href: "/lead-journey", label: "Guided Demo", icon: Rocket },
+];
+
+export function isNavActive(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export function AppSidebar({
   userName,
@@ -65,46 +83,47 @@ export function AppSidebar({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const visibleMore = moreNav.filter(
+    (item) => !item.permission || (userRole && roleHasPermission(userRole as WorkspaceRole, item.permission)),
+  );
+  // Open by default only when you are already inside a More page, so the sidebar stays short.
+  const [moreOpen, setMoreOpen] = useState(() => visibleMore.some((item) => isNavActive(pathname, item.href)));
 
   return (
     <aside className="flex h-full w-[248px] shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-fg">
       <div className="shrink-0 px-5 py-6">
         <div className="text-[15px] font-bold tracking-tight text-accent">{companyName ?? "Synas Realty"}</div>
         <div className="mt-0.5 text-[15px] font-semibold">Lead-to-Sale</div>
-        <div className="mt-1 text-[11px] text-sidebar-muted">Real Estate CRM · Pakistan</div>
+        <div className="mt-1 text-[11px] text-sidebar-muted">US Residential Real Estate CRM</div>
       </div>
-      <nav className="sidebar-scroll flex-1 space-y-0.5 px-3 pb-4">
-        {nav
-          .filter((item) => !item.permission || (userRole && roleHasPermission(userRole as WorkspaceRole, item.permission)))
-          .map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              className={cn(
-                "flex items-center gap-2.5 rounded-[12px] px-3 py-2 text-[13px] font-medium",
-                active ? "bg-[var(--sidebar-active)] text-white" : "text-sidebar-muted hover:bg-[var(--sidebar-hover)] hover:text-white",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-lg",
-                  active ? "bg-white/15" : "bg-transparent",
-                )}
-              >
-                <Icon className={cn("h-4 w-4", item.label === "WhatsApp" && "text-[#25D366]")} />
+      <nav aria-label="Main" className="sidebar-scroll flex-1 space-y-0.5 px-3 pb-4">
+        {primaryNav.map((item) => (
+          <NavLink key={item.href} item={item} active={isNavActive(pathname, item.href)} onNavigate={onNavigate} />
+        ))}
+        <div className="mt-3 border-t border-[var(--sidebar-line)] pt-2">
+          <button
+            type="button"
+            aria-expanded={moreOpen}
+            aria-controls="more-nav"
+            onClick={() => setMoreOpen((o) => !o)}
+            className="flex w-full items-center justify-between rounded-[12px] px-3 py-2 text-[13px] font-medium text-sidebar-muted hover:bg-[var(--sidebar-hover)] hover:text-white"
+          >
+            <span className="flex items-center gap-2.5">
+              <span className="flex h-7 w-7 items-center justify-center">
+                <Ellipsis className="h-4 w-4" />
               </span>
-              {item.label === "WhatsApp" ? (
-                <span className="text-[#25D366]">{item.label}</span>
-              ) : (
-                item.label
-              )}
-            </Link>
-          );
-        })}
+              More
+            </span>
+            <ChevronDown className={cn("h-4 w-4 transition-transform", moreOpen && "rotate-180")} />
+          </button>
+          {moreOpen ? (
+            <div id="more-nav" className="mt-0.5 space-y-0.5">
+              {visibleMore.map((item) => (
+                <NavLink key={item.href} item={item} active={isNavActive(pathname, item.href)} onNavigate={onNavigate} />
+              ))}
+            </div>
+          ) : null}
+        </div>
       </nav>
       <div className="shrink-0 border-t border-[var(--sidebar-line)] px-3 py-2">
         <div className="flex items-center gap-2">
@@ -137,7 +156,7 @@ export function AppSidebar({
               {userName}
             </div>
             <div className="mt-0.5 flex items-center gap-1.5">
-              <span className="text-[8px] font-semibold uppercase tracking-[0.16em] text-sidebar-muted">On desk</span>
+              <span className="text-[8px] font-semibold uppercase tracking-[0.16em] text-sidebar-muted">Channels</span>
               <DeskLamp channel="whatsapp" demo={whatsappDemo} />
               <DeskLamp channel="calendar" demo={calendarDemo} />
             </div>
@@ -145,6 +164,34 @@ export function AppSidebar({
         </div>
       </div>
     </aside>
+  );
+}
+
+function NavLink({
+  item,
+  active,
+  onNavigate,
+}: {
+  item: NavItem;
+  active: boolean;
+  onNavigate?: () => void;
+}) {
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex items-center gap-2.5 rounded-[12px] px-3 py-2 text-[13px] font-medium",
+        active ? "bg-[var(--sidebar-active)] text-white" : "text-sidebar-muted hover:bg-[var(--sidebar-hover)] hover:text-white",
+      )}
+    >
+      <span className={cn("flex h-7 w-7 items-center justify-center rounded-lg", active ? "bg-white/15" : "bg-transparent")}>
+        <Icon className="h-4 w-4" />
+      </span>
+      {item.label}
+    </Link>
   );
 }
 
@@ -160,12 +207,12 @@ function DeskLamp({
   let Icon: typeof MessageCircle;
   switch (channel) {
     case "whatsapp":
-      label = demo ? "WhatsApp demo" : "WhatsApp connected";
+      label = demo ? "WhatsApp (demo, nothing is sent)" : "WhatsApp connected";
       tone = "text-[#25D366]";
       Icon = MessageCircle;
       break;
     case "calendar":
-      label = demo ? "Calendar demo" : "Calendar connected";
+      label = demo ? "Calendar (internal only)" : "Calendar connected";
       tone = "text-accent";
       Icon = CalendarDays;
       break;
@@ -208,19 +255,19 @@ export type SearchHit = {
 };
 
 const COMMANDS = [
-  { href: "/golden-path", label: "Run Golden Path", hint: "Lead-to-sale demo" },
+  { href: "/lead-journey", label: "Open guided demo", hint: "Lead-to-sale walkthrough" },
   { href: "/leads", label: "Create Lead", hint: "Open leads" },
   { href: "/opportunities", label: "Create Opportunity" },
   { href: "/properties", label: "Create Property" },
   { href: "/tasks", label: "Create Task" },
-  { href: "/calendar", label: "Schedule Site Visit" },
+  { href: "/calendar", label: "Schedule Showing" },
   // Lead-scoped: open the lead being viewed, otherwise the lead list (no hard-coded seed lead id).
-  { href: "lead", label: "Analyze Lead" },
-  { href: "lead", label: "Find Property Match" },
-  { href: "lead", label: "Draft WhatsApp Follow-up" },
+  { href: "lead", label: "Review Lead Requirements" },
+  { href: "lead", label: "Show Property Matches" },
+  { href: "lead", label: "Open Suggested Reply" },
   { href: "/proposals", label: "Create Proposal" },
-  { href: "/tasks", label: "Show Overdue" },
-  { href: "/leads", label: "Show High-Value Leads" },
+  { href: "/leads?filter=attention", label: "Show leads needing attention" },
+  { href: "/leads?filter=no-next-action", label: "Show leads with no next action" },
 ];
 
 export function CommandCenter({

@@ -1,4 +1,4 @@
-import { formatCurrency, formatDateTimePK } from "@/lib/format";
+import { formatMoney, formatDateTime } from "@/lib/format";
 import { filterAndScoreProperties } from "@/lib/matching/properties";
 import { loadLeadContext, leadDisplayName, type LeadContext } from "./context";
 import { callPreparationSchema, parseAiOutput, type CallPreparation } from "./schemas";
@@ -11,12 +11,12 @@ function groundedPrep(ctx: LeadContext): CallPreparation {
   const opp = ctx.opportunities[0];
   const lastWa = ctx.whatsapp.slice(-4).map((m) => `${m.direction}: ${m.body}`);
   const recent = ctx.activities.slice(0, 6).map(
-    (a) => `${formatDateTimePK(a.date)} · ${a.title ?? a.type.replaceAll("_", " ")}`,
+    (a) => `${formatDateTime(a.date)} · ${a.title ?? a.type.replaceAll("_", " ")}`,
   );
 
   return parseAiOutput(callPreparationSchema, {
     leadSummary: `${name} · ${lead.stage} · ${lead.intentType} · ${lead.source.replaceAll("_", " ")}. ${lead.notes ?? ""}`.trim(),
-    buyerSellerContext: `${lead.intentType} looking in ${lead.preferredArea ?? "unspecified area"} with budget ${formatCurrency(lead.budgetMin ? Number(lead.budgetMin) : null)} – ${formatCurrency(lead.budgetMax ? Number(lead.budgetMax) : null)}. ${opp ? `Opportunity ${opp.name} is in ${opp.stage.name} at ${formatCurrency(Number(opp.value))}.` : "No opportunity opened."}`,
+    buyerSellerContext: `${lead.intentType} looking in ${lead.preferredArea ?? "unspecified area"} with budget ${formatMoney(lead.budgetMin ? Number(lead.budgetMin) : null)} – ${formatMoney(lead.budgetMax ? Number(lead.budgetMax) : null)}. ${opp ? `Opportunity ${opp.name} is in ${opp.stage.name} at ${formatMoney(Number(opp.value))}.` : "No opportunity opened."}`,
     previousInteractions: recent.length ? recent : ["No logged interactions yet."],
     whatsappSummary: lastWa.length
       ? lastWa.join(" | ")
@@ -47,7 +47,7 @@ function groundedPrep(ctx: LeadContext): CallPreparation {
     ],
     recommendedNextStep: ctx.calendarEvents.some((e) => e.type === "SITE_VISIT")
       ? "Confirm attendance and send the shortlist before the visit."
-      : "Schedule a site visit against the top match.",
+      : "Schedule a showing against the top match.",
     propertyMatchIds: matches.map((m) => m.property.id),
   });
 }

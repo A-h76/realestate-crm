@@ -64,7 +64,7 @@ async function expectStatus(label: string, cookie: string | null, method: string
 }
 
 const leadByPhone = (n: number) =>
-  prisma.lead.findFirstOrThrow({ where: { workspaceId: WS, whatsappNumber: `+9239900001${String(n).padStart(2, "0")}` } });
+  prisma.lead.findFirstOrThrow({ where: { workspaceId: WS, whatsappNumber: `+1312555${String(100 + n).padStart(4, "0")}` } });
 
 async function main() {
   const owner = await login("ux-owner@demo.synaslabs.com");
@@ -137,14 +137,14 @@ async function main() {
     assert.ok(takeOver.handoffTasksClaimed >= 1, "handoff task claimed");
     await expectStatus("Flow 5: agent replies manually", agent, "POST", "/api/whatsapp/messages", { conversationId: `lead:${faisal.id}`, leadId: faisal.id, body: "Ji, owner se confirm kar ke batata hoon." }, 201);
 
-    const opp = await expectStatus("Flow 6: lead -> opportunity", agent, "POST", "/api/opportunities", { name: "Kamran Ashraf: DHA Phase 2 rent", dealSide: "BUYER", value: 576_000, stageId: "ux_stage_qualified", leadId: kamran.id, linkedPropertyId: "uxp_dha2_5m_rent_q" }, 201);
+    const opp = await expectStatus("Flow 6: lead -> opportunity", agent, "POST", "/api/opportunities", { name: "Kevin Mathis: Logan Square rental", dealSide: "BUYER", value: 576_000, stageId: "ux_stage_qualified", leadId: kamran.id, linkedPropertyId: "uxp_logan_th_rent_a" }, 201);
     await expectStatus("Flow 6: move to Discovery", agent, "PATCH", `/api/opportunities/${opp.id}`, { stageId: "ux_stage_discovery" }, 200);
 
     const start = new Date(Date.now() + 2 * 86_400_000);
-    const visit = await expectStatus("Flow 7: schedule site visit", agent, "POST", "/api/calendar", { title: "Site visit: DHA Phase 2 Block Q", type: "SITE_VISIT", startAt: start, endAt: new Date(start.getTime() + 3_600_000), leadId: kamran.id, opportunityId: opp.id }, 201);
+    const visit = await expectStatus("Flow 7: schedule showing", agent, "POST", "/api/calendar", { title: "Showing: 2418 N Sawyer Ave", type: "SITE_VISIT", startAt: start, endAt: new Date(start.getTime() + 3_600_000), leadId: kamran.id, opportunityId: opp.id }, 201);
     await expectStatus("Flow 7: record visit outcome", agent, "PATCH", `/api/calendar/${visit.id ?? visit.event?.id}`, { status: "COMPLETED", notes: "Liked it." }, 200);
 
-    const proposal = await expectStatus("Flow 8: create proposal", agent, "POST", "/api/proposals", { leadId: kamran.id, opportunityId: opp.id, linkedPropertyId: "uxp_dha2_5m_rent_q", value: 576_000 }, 201);
+    const proposal = await expectStatus("Flow 8: create proposal", agent, "POST", "/api/proposals", { leadId: kamran.id, opportunityId: opp.id, linkedPropertyId: "uxp_logan_th_rent_a", value: 576_000 }, 201);
     for (const status of ["SENT", "VIEWED", "ACCEPTED"]) {
       await expectStatus(`Flow 8: proposal ${status}`, agent, "PATCH", `/api/proposals/${proposal.id}`, { status }, 200);
     }

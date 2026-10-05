@@ -1,6 +1,12 @@
-import { normalizePkPhone } from "@/lib/format";
-import type { IntentType, LeadSource, PropertyPurpose, PropertyType } from "@prisma/client";
+import { describePhoneRejection, parsePhone } from "@/lib/phone";
 import { ApiError } from "@/lib/errors";
+import {
+  intentTypeEnum,
+  leadSourceEnum,
+  propertyPurposeEnum,
+  propertyTypeEnum,
+} from "@/lib/validations/common";
+import type { z } from "zod";
 
 export const CSV_LIMITS = {
   maxBytes: 1_048_576,
@@ -8,20 +14,12 @@ export const CSV_LIMITS = {
   maxFieldLength: 2000,
 } as const;
 
-const SOURCES = new Set<LeadSource>([
-  "ZAMEEN",
-  "FACEBOOK_ADS",
-  "REFERRAL",
-  "WALK_IN",
-  "SIGNBOARD",
-  "WHATSAPP_INBOUND",
-  "COLD_CALL",
-  "EXISTING_CLIENT",
-]);
-
-const INTENTS = new Set<IntentType>(["BUY", "SELL", "RENT", "INVEST", "UNKNOWN"]);
-const TYPES = new Set<PropertyType>(["PLOT", "HOUSE", "APARTMENT", "COMMERCIAL", "AGRICULTURAL"]);
-const PURPOSES = new Set<PropertyPurpose>(["SALE", "RENT"]);
+// Accepted values come from the shared validation enums, so an import can never create a
+// lead with a source or property type the rest of the app does not know.
+const SOURCES = new Set<string>(leadSourceEnum.options);
+const INTENTS = new Set<string>(intentTypeEnum.options);
+const TYPES = new Set<string>(propertyTypeEnum.options);
+const PURPOSES = new Set<string>(propertyPurposeEnum.options);
 
 export type CsvLeadRow = {
   firstName: string;
@@ -29,15 +27,15 @@ export type CsvLeadRow = {
   email?: string;
   phone?: string;
   whatsappNumber?: string;
-  source?: LeadSource;
+  source?: z.infer<typeof leadSourceEnum>;
   company?: string;
   industry?: string;
   preferredArea?: string;
   budgetMin?: number;
   budgetMax?: number;
-  intentType?: IntentType;
-  propertyTypePref?: PropertyType;
-  propertyPurpose?: PropertyPurpose;
+  intentType?: z.infer<typeof intentTypeEnum>;
+  propertyTypePref?: z.infer<typeof propertyTypeEnum>;
+  propertyPurpose?: z.infer<typeof propertyPurposeEnum>;
   notes?: string;
 };
 
@@ -153,30 +151,50 @@ export function parseLeadCsv(text: string): {
       invalid.push({ row, field: "email", message: "Invalid email." });
       return;
     }
-    const sourceRaw = (get("source") || "WHATSAPP_INBOUND").toUpperCase().replace(/\s+/g, "_") as LeadSource;
+    const sourceRaw = (get("source") || "WHATSAPP_INBOUND").toUpperCase().replace(/\s+/g, "_") as CsvLeadRow["source"] & string;
     if (!SOURCES.has(sourceRaw)) {
       invalid.push({ row, field: "source", message: `Unknown source ${sourceRaw}.` });
       return;
     }
-    const intentRaw = (get("intenttype") || get("intent") || "UNKNOWN").toUpperCase() as IntentType;
+    const intentRaw = (get("intenttype") || get("intent") || "UNKNOWN").toUpperCase() as CsvLeadRow["intentType"] & string;
     if (!INTENTS.has(intentRaw)) {
       invalid.push({ row, field: "intentType", message: `Unknown intent ${intentRaw}.` });
       return;
     }
     const typeRaw = get("propertytypepref") || get("propertytype");
     const purposeRaw = get("propertypurpose") || get("purpose");
-    if (typeRaw && !TYPES.has(typeRaw.toUpperCase() as PropertyType)) {
+    if (typeRaw && !TYPES.has(typeRaw.toUpperCase())) {
       invalid.push({ row, field: "propertyTypePref", message: `Unknown property type ${typeRaw}.` });
       return;
     }
-    if (purposeRaw && !PURPOSES.has(purposeRaw.toUpperCase() as PropertyPurpose)) {
+    if (purposeRaw && !PURPOSES.has(purposeRaw.toUpperCase())) {
       invalid.push({ row, field: "propertyPurpose", message: `Unknown purpose ${purposeRaw}.` });
       return;
     }
-    const phone = get("phone") ? normalizePkPhone(get("phone")) ?? get("phone") : undefined;
-    const whatsappNumber = get("whatsappnumber") || get("whatsapp")
-      ? normalizePkPhone(get("whatsappnumber") || get("whatsapp")) ?? undefined
-      : phone;
+    // A number that will not parse is reported on its row rather than stored as typed:
+    // a half-normalized phone is a corrupted identity, and dedupe would silently miss it.
+    const phoneRaw = get("phone");
+    const whatsappRaw = get("whatsappnumber") || get("whatsapp");
+    let phone: string | undefined;
+    let whatsappNumber: string | undefined;
+    if (phoneRaw) {
+      const parsed = parsePhone(phoneRaw);
+      if (!parsed.ok) {
+        invalid.push({ row, field: "phone", message: `${describePhoneRejection(parsed.reason)}: ${phoneRaw}` });
+        return;
+      }
+      phone = parsed.e164;
+    }
+    if (whatsappRaw) {
+      const parsed = parsePhone(whatsappRaw);
+      if (!parsed.ok) {
+        invalid.push({ row, field: "whatsappNumber", message: `${describePhoneRejection(parsed.reason)}: ${whatsappRaw}` });
+        return;
+      }
+      whatsappNumber = parsed.e164;
+    } else {
+      whatsappNumber = phone;
+    }
     const budgetMin = get("budgetmin") ? Number(get("budgetmin")) : undefined;
     const budgetMax = get("budgetmax") ? Number(get("budgetmax")) : undefined;
     if (budgetMin != null && Number.isNaN(budgetMin)) {
@@ -213,8 +231,8 @@ export function parseLeadCsv(text: string): {
       budgetMin,
       budgetMax,
       intentType: intentRaw,
-      propertyTypePref: typeRaw ? (typeRaw.toUpperCase() as PropertyType) : undefined,
-      propertyPurpose: purposeRaw ? (purposeRaw.toUpperCase() as PropertyPurpose) : undefined,
+      propertyTypePref: typeRaw ? (typeRaw.toUpperCase() as CsvLeadRow["propertyTypePref"]) : undefined,
+      propertyPurpose: purposeRaw ? (purposeRaw.toUpperCase() as CsvLeadRow["propertyPurpose"]) : undefined,
       notes: get("notes") || undefined,
     });
   });

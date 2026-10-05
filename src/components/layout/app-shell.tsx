@@ -1,20 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, X } from "lucide-react";
-import { AppSidebar, CommandCenter, useCommandOpen } from "@/components/layout/app-sidebar";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Ellipsis, Menu, X } from "lucide-react";
+import { AppSidebar, CommandCenter, isNavActive, primaryNav, useCommandOpen } from "@/components/layout/app-sidebar";
 import { NotificationsMenu } from "@/components/layout/notifications-menu";
 import { initials } from "@/lib/dashboard-ui";
 import { prettyRole } from "@/lib/format";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 import { DemoBanner, DemoModeProvider } from "@/components/demo-banner";
+import { cn } from "@/lib/utils";
 
 export function AppShell({
   userName,
   userRole,
   workspaceName,
   companyName,
-  city,
+  timeZone,
   calendarDemo,
   whatsappDemo,
   demoMode = false,
@@ -24,7 +27,9 @@ export function AppShell({
   userRole?: string | null;
   workspaceName: string;
   companyName?: string;
-  city: string;
+  /** The workspace's configured IANA time zone — a real setting, shown so the user can see
+   * which zone the dates and SLA clocks on screen are in. */
+  timeZone: string;
   calendarDemo: boolean;
   whatsappDemo: boolean;
   demoMode?: boolean;
@@ -32,6 +37,7 @@ export function AppShell({
 }) {
   const { open, setOpen } = useCommandOpen();
   const [mobileNav, setMobileNav] = useState(false);
+  const pathname = usePathname();
 
   return (
     <DemoModeProvider enabled={demoMode}>
@@ -83,17 +89,17 @@ export function AppShell({
             onClick={() => setOpen(true)}
             className="flex h-10 min-w-0 flex-1 items-center justify-between rounded-full border border-border bg-surface px-4 text-left text-[14px] text-muted shadow-[var(--shadow)]"
           >
-            <span className="truncate">Search leads, properties, opportunities…</span>
+            <span className="truncate">Search leads, properties, deals…</span>
             <kbd className="hidden rounded-full border border-border px-2 py-0.5 text-[11px] text-muted sm:inline">
               ⌘ K
             </kbd>
           </button>
           <span
             className="hidden h-10 items-center rounded-full border border-border bg-surface px-3 text-[13px] font-medium text-foreground sm:inline-flex"
-            title={`Workspace market: ${city}`}
+            title={`Workspace time zone: ${timeZone}`}
           >
-            <span className="sr-only">Workspace market: </span>
-            {city}
+            <span className="sr-only">Workspace time zone: </span>
+            {timeZone.split("/").pop()?.replaceAll("_", " ") ?? timeZone}
           </span>
           <NotificationsMenu />
           <div className="hidden items-center gap-2 sm:flex">
@@ -112,7 +118,36 @@ export function AppShell({
           label="Demo workspace"
           detail="Synthetic records for demos and UX testing. No real customers; no real WhatsApp messages are sent."
         />
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">{children}</main>
+        {/* Phone: the four everyday screens stay one tap away; everything else is under More. */}
+        <nav
+          aria-label="Primary"
+          className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
+        >
+          {primaryNav.map((item) => {
+            const active = isNavActive(pathname, item.href);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={cn("flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium", active ? "text-accent-text" : "text-muted")}
+              >
+                <Icon className="h-5 w-5" aria-hidden />
+                {item.label}
+              </Link>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setMobileNav(true)}
+            className="flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-muted"
+          >
+            <Ellipsis className="h-5 w-5" aria-hidden />
+            More
+          </button>
+        </nav>
       </div>
       <CommandCenter open={open} onOpenChange={setOpen} />
     </div>

@@ -3,18 +3,18 @@
 
 ## Positioning
 
-WhatsApp-first, PKR-denominated, site-visit-driven sales operating system that turns
-incoming Pakistani real-estate leads into structured opportunities, property matches,
-follow-ups, site visits, proposals, negotiations and closed revenue.
+Lead-to-sale operating system for US residential real estate that turns incoming
+leads into structured opportunities, property matches, follow-ups, showings,
+proposals, negotiations and closed revenue.
 
 ## Vertical
 
 - Real estate
-- Initial market: Pakistan
-- Currency default: PKR (₨)
-- Timezone: Asia/Karachi
-- Dates: DD/MM/YYYY
-- Phone: +92
+- Market: United States
+- Currency default: USD ($)
+- Timezone: workspace setting (default America/New_York)
+- Dates: MM/DD/YYYY
+- Phone: +1 (E.164)
 
 ## Phase boundary
 

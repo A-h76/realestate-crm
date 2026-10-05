@@ -40,7 +40,7 @@ async function login() {
   let jar = mergeCookies([], cookies);
   const body = new URLSearchParams({
     csrfToken,
-    email: process.env.E2E_EMAIL ?? "ahmed@synaslabs.demo",
+    email: process.env.E2E_EMAIL ?? "dana@synaslabs.demo",
     password,
     callbackUrl: `${BASE}/dashboard`,
     json: "true",
@@ -149,7 +149,7 @@ async function main() {
     name: "Golden Path Opportunity",
     dealSide: "BUYER",
     value: Number(lead.estimatedValue ?? 42000000),
-    currency: "PKR",
+    currency: "USD",
     stageId: stageBySlug.new.id,
     leadId: lead.id,
     linkedPropertyId: property.id,

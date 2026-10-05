@@ -29,10 +29,13 @@ export const opportunityCreateSchema = z.object({
 export const opportunityUpdateSchema = opportunityCreateSchema.partial().extend({
   stageId: z.string().min(1).optional(),
   lostReason: z.string().trim().optional().nullable(),
+  expectedStageId: z.string().min(1).optional(),
 });
 
 export const opportunityStagePatchSchema = z.object({
   stageId: z.string().min(1),
+  /** Optimistic check: reject with 409 if the opportunity is no longer in this stage. */
+  expectedStageId: z.string().min(1).optional(),
 });
 
 export const opportunityListQuerySchema = paginationSchema.extend({

@@ -31,16 +31,16 @@ Every scenario lead has a `UX scenario:` note on its lead page.
 
 | Flow | Lead | What you should see |
 | --- | --- | --- |
-| 1: new WhatsApp lead | Usman Tariq | Lead created from WhatsApp, requirement extracted, still unassigned |
-| 2: incomplete requirement | Hira Aslam | Type and area known; purpose, budget and size still missing |
-| 3 + 6: grounded match | Kamran Ashraf | Matches shown and detailed; ready to convert to an opportunity |
-| 4: no grounded match | Nadia Farooq | Handoff triggered, not taken over (see below) |
-| 5: handoff pending | Faisal Mehmood | Owner/documents question, waiting for someone to take over |
-| Takeover done | Rabia Saleem | Agent took over and is replying manually |
+| 1: new WhatsApp lead | Tyler Brennan | Lead created from WhatsApp, requirement extracted, still unassigned |
+| 2: incomplete requirement | Hannah Caldwell | Type and area known; purpose, budget and size still missing |
+| 3 + 6: grounded match | Kevin Mathis | Matches shown and detailed; ready to convert to an opportunity |
+| 4: no grounded match | Natalie Ferraro | Handoff triggered, not taken over (see below) |
+| 5: handoff pending | Felix Mendoza | Owner/documents question, waiting for someone to take over |
+| Takeover done | Renee Sorensen | Agent took over and is replying manually |
 | Follow-up | Imran Qadir | Manager took over and is following up manually |
-| 7: site visit | Adeel Anwar | Visit scheduled for tomorrow |
-| 8 + 9: proposal / negotiation | Zara Hussain, Omar Siddiqui, Mehwish Kiani | Proposal viewed / sent / draft |
-| Won / lost / other | Ayesha Rafiq, Saad Iqbal, Shazia Noor, Maryam Khalid, Bilal Chaudhry, Tariq Mahmood, Fatima Zahid, Hassan Raza, Junaid Akram | Dashboard revenue, lost reasons, seller side, reserved listing, visit history |
+| 7: site visit | Andre Alvarez | Visit scheduled for tomorrow |
+| 8 + 9: proposal / negotiation | Zoe Hartman, Owen Sandoval, Megan Kiernan | Proposal viewed / sent / draft |
+| Won / lost / other | Alexis Rafferty, Sydney Ingram, Simone Nordstrom, Monica Hayes, Brandon Kowalski, Trevor Tomlin, Felicia Zane, Harrison Reed, Jonah Ackerman | Dashboard revenue, lost reasons, seller side, reserved listing, visit history |
 
 ## Human handoff vs. human takeover
 
@@ -54,7 +54,7 @@ These are two different states. Keeping them apart is intentional.
 | Inbox badge / banner | Red **Human handoff required**, with a Take over button | Amber **Handoff in progress**, "You are handling this" |
 | AI auto-replies | **Continue** on later customer messages | **Stop permanently** for that lead. Only people reply from then on |
 
-Rabia Saleem and Imran Qadir show the takeover state. Customers keep writing after the takeover, and no automatic reply follows.
+Renee Sorensen and Imran Qadir show the takeover state. Customers keep writing after the takeover, and no automatic reply follows.
 
 Things to evaluate:
 
@@ -77,27 +77,27 @@ The empty match list and the absence of suggestions are correct. Evaluate how cl
 
 The AI never invents property facts. Prices, titles, locations and counts come only from the matched listing records.
 
-The matcher returns close matches as well as exact ones, for example another DHA phase or a similar house in another area. Because of that, the match message names a single area only when **every** match is in that area. Otherwise it breaks the matches down by their real areas, for example: *"Mere paas 4 properties hain jo aapki requirement ke qareeb hain (1 DHA Phase 6, 1 Cantt, 1 Valencia, 1 Bahria Town)."*
+The matcher returns close matches as well as exact ones, for example another Chicago neighborhood or a similar home nearby. Because of that, the match message names a single area only when **every** match is in that area. Otherwise it breaks the matches down by their real areas, for example: *"I have 4 properties close to your requirements (1 in Lincoln Park, 1 in Logan Square, 1 in Wicker Park, 1 in Lakeview)."*
 
 Whether customers expect "close" matches in other areas at all is a question for you to evaluate.
 
 ## Flow 2: why the same question is asked twice
 
-Hira's conversation goes like this:
+Hannah's conversation goes like this:
 
-1. She says "House chahiye".
-2. The AI asks "Purchase ke liye chahiye ya rent pe?"
-3. She answers with the area ("DHA") instead of answering the question.
+1. She says "I need a house".
+2. The AI asks "Are you looking to buy or rent?"
+3. She answers with the area ("Lincoln Park") instead of answering the question.
 4. The AI asks the same question again.
 
-This follows the current rules. The AI asks **one question at a time**, in a fixed priority order: purpose, then type, then area, then budget, then size. Hira's reply gave an area but not the purpose, so the purpose is still the most important missing detail. The same question is repeated word for word, with no acknowledgement that the area was captured. That is fair to judge as a conversation-design issue.
+This follows the current rules. The AI asks **one question at a time**, in a fixed priority order: purpose, then type, then area, then budget, then size. Hannah's reply gave an area but not the purpose, so the purpose is still the most important missing detail. The same question is repeated word for word, with no acknowledgement that the area was captured. That is fair to judge as a conversation-design issue.
 
 The AI gives up differently when a reply can't be understood at all. It hands off rather than asking the same question a second time.
 
 ## Site visits
 
 - A visit has one of four statuses: **Scheduled**, **Completed**, **No-show** or **Cancelled**.
-- **There is no "Rescheduled" status.** A rescheduled visit stays **Scheduled** with a new date and time. Junaid Akram's visit shows this. The previous time is kept only in the visit's internal data and its note ("Moved from yesterday at the client's request"). The UI does not show it as a separate state or show the reschedule history.
+- **There is no "Rescheduled" status.** A rescheduled visit stays **Scheduled** with a new date and time. Jonah Ackerman's visit shows this. The previous time is kept only in the visit's internal data and its note ("Moved from yesterday at the client's request"). The UI does not show it as a separate state or show the reschedule history.
 - **A visit is completed only when a person confirms it.** The CRM cannot detect that a physical visit happened. A visit stays Scheduled after its time has passed until someone marks the outcome. Marking a site visit Completed is what triggers the post-visit automations.
 - **Known gap to evaluate:** the calendar screen can create visits but has no control to mark a visit Completed or No-show, or to move it to a new time. The seeded history (Hassan's no-show followed by a completed visit, Shazia's cancellation, Junaid's reschedule) was written directly into the data. In the current UI, an agent has no way to record a visit outcome.
 

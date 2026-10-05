@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Throwaway CI-only values for a disposable service-container database. No repository secrets are used,
+# so nothing sensitive can reach the logs.
+env:
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/leadtosale_crm_ci?schema=public
+  AUTH_SECRET: ci-only-secret-at-least-32-characters-long
+  AUTH_URL: http://localhost:3000
+  NEXTAUTH_URL: http://localhost:3000
+  DEMO_MODE: "false"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: leadtosale_crm_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Schema matches migrations (no drift)
+        run: npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # SEC-010: the nonce-based CSP can only be proven in a browser. Starts the production build, signs in as a
+      # throwaway user in the CI database, and loads the main pages in headless Chrome with the policy enforced.
+      # A fresh random AUTH_SECRET is used because startup validation rejects the placeholder one above.
+      - name: CSP check (production build, headless browser)
+        run: |
+          export AUTH_SECRET="$(openssl rand -hex 24)"
+          export AUTH_URL=http://localhost:3002 NEXTAUTH_URL=http://localhost:3002
+          npx next start -p 3002 > server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3002/api/health/live > /dev/null && break; sleep 1; done
+          BASE_URL=http://localhost:3002 npm run check:csp || { echo "--- server log (tail) ---"; tail -n 40 server.log; exit 1; }
+
+      # Fails the build on a critical advisory in production dependencies. High-severity findings
+      # (currently Prisma CLI transitives, SEC-002) are reported but tracked separately.
+      - name: Dependency audit (production, critical gate)
+        run: npm audit --omit=dev --audit-level=critical

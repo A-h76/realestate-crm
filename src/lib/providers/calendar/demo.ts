@@ -29,7 +29,7 @@ export class DemoCalendarProvider implements CalendarProvider {
         externalEventId: `demo-cal-${crypto.randomUUID()}`,
         metadata: {
           ...(input.metadata ?? {}),
-          demoNotice: "Demo Calendar event generated. No external calendar was updated.",
+          demoNotice: "Stored in the CRM calendar only. No external calendar was updated.",
         } as Prisma.InputJsonValue,
       },
     });

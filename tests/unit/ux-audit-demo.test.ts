@@ -114,28 +114,28 @@ describe("UX audit demo workspace seed", { timeout: 180_000 }, () => {
   it("Flow 1: creates a lead from WhatsApp and extracts the requirement", async () => {
     const lead = await leadFor("flow1_new_lead");
     assert.equal(lead.source, "WHATSAPP_INBOUND");
-    assert.equal(lead.preferredArea, "DHA Phase 2");
+    assert.equal(lead.preferredArea, "Logan Square");
     assert.equal(lead.propertyPurpose, "RENT");
-    assert.equal(lead.propertyTypePref, "HOUSE");
-    assert.equal(Number(lead.sizePrefMin), 5);
-    assert.equal(Number(lead.budgetMax), 50_000);
+    assert.equal(lead.propertyTypePref, "TOWNHOUSE");
+    assert.equal(lead.bedroomPref, 3);
+    assert.equal(Number(lead.budgetMax), 2_900);
     assert.equal(lead.ownerId, null, "brand-new lead stays unassigned for the manager to assign");
   });
 
   it("Flow 2: leaves an incomplete requirement with the next question asked", async () => {
     const lead = await leadFor("flow2_incomplete");
-    assert.equal(lead.propertyTypePref, "HOUSE");
-    assert.equal(lead.preferredArea, "DHA");
+    assert.equal(lead.propertyTypePref, "SINGLE_FAMILY");
+    assert.equal(lead.preferredArea, "Lincoln Park");
     assert.equal(lead.propertyPurpose, null);
     assert.equal(lead.budgetMax, null);
     const last = await prisma.whatsAppMessage.findFirst({ where: { leadId: lead.id }, orderBy: { sentAt: "desc" } });
     assert.equal((last?.metadata as { decision?: string }).decision, "ASK_QUESTION");
   });
 
-  it("Flow 3: grounded DHA Phase 2 rent matches exist and were shown", async () => {
+  it("Flow 3: grounded Logan Square rent matches exist and were shown", async () => {
     const lead = await leadFor("flow3_grounded_match");
     const matches = filterAndScoreProperties(lead, await properties());
-    const grounded = matches.filter((m) => m.property.area === "DHA Phase 2" && m.property.purpose === "RENT");
+    const grounded = matches.filter((m) => m.property.area === "Logan Square" && m.property.purpose === "RENT");
     assert.ok(grounded.length >= 2);
     const decisions = await prisma.whatsAppMessage.findMany({ where: { leadId: lead.id, direction: "OUTBOUND" } });
     assert.ok(decisions.some((m) => (m.metadata as { decision?: string }).decision === "SHOW_MATCH_DETAILS"));
@@ -149,7 +149,7 @@ describe("UX audit demo workspace seed", { timeout: 180_000 }, () => {
     assert.equal(tasks.length, 1);
     assert.ok(tasks[0].description?.includes("[handoff:NO_GROUNDED_INVENTORY_MATCH]"));
     const replies = await prisma.whatsAppMessage.findMany({ where: { leadId: lead.id, direction: "OUTBOUND" } });
-    assert.ok(replies.every((m) => !/Rs \d/.test(m.body)), "no property offered to the customer");
+    assert.ok(replies.every((m) => !/\$\d/.test(m.body)), "no listing price offered to the customer");
     // Handoff TRIGGERED, not taken over: task still TODO, audit logged, no takeover marker, so the AI may still reply.
     assert.equal(tasks[0].status, "TODO");
     assert.equal(await prisma.auditLog.count({ where: { workspaceId: WS, entityId: lead.id, action: "HANDOFF_TRIGGERED" } }), 1);

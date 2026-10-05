@@ -3,7 +3,7 @@ import { ApiError, jsonError, jsonOk, requirePermission } from "@/lib/api";
 import { notify } from "@/lib/notifications";
 import { parseBody } from "@/lib/validations/common";
 import { scoreLead } from "@/lib/scoring/score-lead";
-import { runAutomations } from "@/lib/automation/engine";
+import { dayBucket, runAutomations } from "@/lib/automation/engine";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { measuredRoute } from "@/lib/perf";
 
@@ -27,6 +27,7 @@ export const POST = measuredRoute("POST /api/scoring", async (request: Request) 
         trigger: "LEAD_SCORED_HIGH",
         leadId: body.leadId,
         payload: { leadScore: result.lead.leadScore },
+        eventKey: `scored-high:${body.leadId}:${dayBucket()}`,
       });
     }
     if (result.lead.leadScore > result.previousScore && result.lead.ownerId) {

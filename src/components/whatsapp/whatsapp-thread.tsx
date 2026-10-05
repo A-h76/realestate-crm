@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useCan } from "@/components/providers/permissions";
 import { Textarea } from "@/components/ui/textarea";
-import { formatDateTimePK, formatTimePK } from "@/lib/format";
+import { formatDateTime, formatTime } from "@/lib/format";
+import type { WhatsAppMode } from "@/lib/providers/whatsapp/mode";
 import type { CrmEvent } from "@/lib/whatsapp/inbox-list";
 import { cn } from "@/lib/utils";
 
@@ -34,12 +36,18 @@ export function WhatsAppThread({
   /** Fill the parent's height (used by the Inbox's bounded 3-pane layout) instead of the fixed-height card used elsewhere. */
   fill?: boolean;
 }) {
+  const canSend = useCan("whatsapp:send");
+  const canSuggest = useCan("intelligence:run");
   const router = useRouter();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
-  const [isDemo, setIsDemo] = useState(true);
+  // null until the server says which provider is active: never assume demo (or live) before we know.
+  const [mode, setMode] = useState<WhatsAppMode | null>(null);
+  const isDemo = mode === "demo";
+  const notConnected = mode === "misconfigured" || mode === "disabled";
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -54,7 +62,7 @@ export function WhatsAppThread({
       }
       const data = await res.json();
       setMessages(Array.isArray(data) ? data : (data.messages ?? []));
-      if (typeof data.isDemo === "boolean") setIsDemo(data.isDemo);
+      if (typeof data.mode === "string") setMode(data.mode as WhatsAppMode);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load conversation");
     } finally {
@@ -107,6 +115,31 @@ export function WhatsAppThread({
     }
   }
 
+  // Fills the composer only. Nothing is sent until a person presses Send, and the send route still
+  // runs the server-side consent / STOP / takeover / provider checks.
+  async function suggestReply() {
+    setSuggesting(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/intelligence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "FOLLOW_UP_DRAFT", leadId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Could not suggest a reply");
+      const text = typeof data.output?.body === "string" ? data.output.body : "";
+      if (!text) throw new Error("No suggestion available for this lead yet");
+      setBody(text);
+      setNotice("Suggested reply added below. Edit it, then send. Nothing has been sent.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not suggest a reply");
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
   async function simulateInbound() {
     setSending(true);
     setNotice(null);
@@ -118,7 +151,7 @@ export function WhatsAppThread({
         body: JSON.stringify({
           conversationId,
           leadId,
-          body: "Thanks — can we schedule a site visit this weekend?",
+          body: "Thanks — can we set up a showing this weekend?",
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -139,10 +172,20 @@ export function WhatsAppThread({
         <div>
           <h3 className="text-sm font-medium tracking-tight">WhatsApp</h3>
           <p className="mt-0.5 text-xs text-muted">
-            {isDemo ? "Tied to this lead · demo send never leaves the CRM" : "Tied to this lead · WhatsApp Business"}
+            {mode === null
+              ? "Tied to this lead"
+              : isDemo
+                ? "Tied to this lead · demo send never leaves the CRM"
+                : notConnected
+                  ? "Tied to this lead · WhatsApp is not connected, messages are saved as Failed"
+                  : "Tied to this lead · WhatsApp Business"}
           </p>
         </div>
-        <Badge tone={isDemo ? "accent" : "success"}>{isDemo ? "Demo" : "Live"}</Badge>
+        {mode === null ? null : (
+          <Badge tone={isDemo ? "accent" : notConnected ? "warning" : "success"}>
+            {isDemo ? "Demo" : notConnected ? "Not connected" : "Live"}
+          </Badge>
+        )}
       </div>
 
       <div
@@ -167,7 +210,7 @@ export function WhatsAppThread({
                       <div className="mt-0.5 text-[11px] text-muted">{item.event.detail}</div>
                     ) : null}
                   </div>
-                  <div className="mono mt-1 text-[10px] text-muted">{formatDateTimePK(item.at)}</div>
+                  <div className="mono mt-1 text-[10px] text-muted">{formatDateTime(item.at)}</div>
                 </div>
               );
             }
@@ -181,7 +224,7 @@ export function WhatsAppThread({
                   <span className="inline-block bg-white/80 px-3 py-1 text-[11px] text-muted">
                     {msg.body}
                   </span>
-                  <div className="mono mt-1 text-[10px] text-muted">{formatDateTimePK(msg.sentAt)}</div>
+                  <div className="mono mt-1 text-[10px] text-muted">{formatDateTime(msg.sentAt)}</div>
                 </div>
               );
             }
@@ -203,7 +246,7 @@ export function WhatsAppThread({
                   </div>
                   <p className="mt-0.5 whitespace-pre-wrap break-words">{msg.body}</p>
                   <div className="mono mt-1 flex items-center justify-end gap-2 text-[10px] text-muted">
-                    <span>{formatTimePK(msg.sentAt)}</span>
+                    <span>{formatTime(msg.sentAt)}</span>
                     {outbound ? <span>{msg.status}</span> : null}
                   </div>
                 </div>
@@ -216,6 +259,7 @@ export function WhatsAppThread({
 
       {(notice || error) && (
         <div
+          role={error ? "alert" : "status"}
           className={cn(
             "shrink-0 border-t border-border px-4 py-2 text-xs",
             error ? "bg-red-50 text-danger" : "bg-accent-soft text-foreground",
@@ -225,8 +269,14 @@ export function WhatsAppThread({
         </div>
       )}
 
-      <div className="shrink-0 space-y-2 border-t border-border p-3">
+      {!canSend ? (
+        <p className="shrink-0 border-t border-border p-3 text-xs text-muted">
+          Your role is view-only: you can read this conversation but not send messages.
+        </p>
+      ) : null}
+      <div className={cn("shrink-0 space-y-2 border-t border-border p-3", canSend ? "" : "hidden")}>
         <Textarea
+          aria-label="Message to send"
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder={isDemo ? "Type a demo WhatsApp message…" : "Type a WhatsApp message…"}
@@ -242,6 +292,11 @@ export function WhatsAppThread({
           <Button type="button" variant="accent" size="sm" disabled={sending || !body.trim()} onClick={() => void sendMessage()}>
             {isDemo ? "Send demo message" : "Send message"}
           </Button>
+          {canSuggest ? (
+            <Button type="button" variant="outline" size="sm" disabled={sending || suggesting} onClick={() => void suggestReply()}>
+              {suggesting ? "Thinking…" : "Suggest a reply"}
+            </Button>
+          ) : null}
           {isDemo ? (
             <Button type="button" variant="outline" size="sm" disabled={sending} onClick={() => void simulateInbound()}>
               Simulate inbound

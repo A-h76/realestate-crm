@@ -46,13 +46,13 @@ export function LoginForm({ demoMode }: { demoMode: boolean }) {
               Lead-to-Sale CRM
             </h1>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-white/65">
-              WhatsApp-first, PKR-denominated, site-visit-driven sales operating system for
-              Pakistani real estate.
+              AI-assisted lead response and pipeline for US residential real estate teams —
+              every lead owned, every follow-up on the record.
             </p>
           </div>
           <div className="space-y-3 text-sm text-white/55">
             <div>{demoMode ? "Isolated demo environment" : "Workspace sign-in"}</div>
-            <div className="mono text-xs">Asia/Karachi · DD/MM/YYYY · ₨</div>
+            <div className="mono text-xs">MM/DD/YYYY · 12-hour · USD</div>
           </div>
         </div>
       </div>

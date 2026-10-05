@@ -1,4 +1,4 @@
-import { formatCurrency, formatDateTimePK } from "@/lib/format";
+import { formatMoney, formatDateTime } from "@/lib/format";
 import { filterAndScoreProperties } from "@/lib/matching/properties";
 import { loadLeadContext, leadDisplayName } from "./context";
 import { parseAiOutput, siteVisitPreparationSchema } from "./schemas";
@@ -21,12 +21,12 @@ export async function prepareSiteVisit(input: {
   const opp = ctx.opportunities[0];
 
   const output = parseAiOutput(siteVisitPreparationSchema, {
-    leadSummary: `${name} · ${lead.intentType} · ${lead.preferredArea ?? "area TBC"} · ${formatCurrency(lead.budgetMax ? Number(lead.budgetMax) : null)} ceiling.`,
+    leadSummary: `${name} · ${lead.intentType} · ${lead.preferredArea ?? "area TBC"} · ${formatMoney(lead.budgetMax ? Number(lead.budgetMax) : null)} ceiling.`,
     buyerSellerContext: opp
       ? `${opp.dealSide} opportunity ${opp.name} in ${opp.stage.name}.`
       : `${lead.intentType} lead, opportunity not opened.`,
     previousInteractions: ctx.activities.slice(0, 5).map(
-      (a) => `${formatDateTimePK(a.date)} · ${a.title ?? a.type}`,
+      (a) => `${formatDateTime(a.date)} · ${a.title ?? a.type}`,
     ),
     whatsappSummary: ctx.whatsapp.length
       ? ctx.whatsapp.slice(-3).map((m) => m.body).join(" / ")
@@ -52,8 +52,8 @@ export async function prepareSiteVisit(input: {
     recommendedNextStep: "After the visit, log notes and send the proposal or the second option.",
     propertyMatchIds: matches.map((m) => m.property.id),
     visitLogistics: visit
-      ? `${visit.title} · ${formatDateTimePK(visit.startAt)} · ${visit.location ?? "location TBC"}`
-      : "No site visit is scheduled in the calendar.",
+      ? `${visit.title} · ${formatDateTime(visit.startAt)} · ${visit.location ?? "location TBC"}`
+      : "No showing is scheduled in the calendar.",
     onSiteTalkingPoints: matches.map(
       (m) => `${m.matchScore}% match · ${m.property.title} · ${m.reasons.map((r) => r.factor).join(", ")}`,
     ),

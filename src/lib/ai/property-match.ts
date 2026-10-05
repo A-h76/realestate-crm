@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { filterAndScoreProperties } from "@/lib/matching/properties";
 import { loadLeadContext } from "./context";
 import { parseAiOutput, propertyMatchBundleSchema, type PropertyMatchBundle } from "./schemas";
@@ -21,7 +21,7 @@ export async function explainPropertyMatches(input: {
       caution: row.caution,
     })),
     summary: scored[0]
-      ? `Top match ${scored[0].matchScore}% · ${scored[0].property.title} · ${formatCurrency(Number(scored[0].property.price))}. Deterministic filter ran before explanation.`
+      ? `Top match ${scored[0].matchScore}% · ${scored[0].property.title} · ${formatMoney(Number(scored[0].property.price))}. Deterministic filter ran before explanation.`
       : "No available properties passed the deterministic filter for this brief.",
   });
 

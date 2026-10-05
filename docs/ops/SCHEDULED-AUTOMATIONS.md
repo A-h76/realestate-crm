@@ -1,0 +1,40 @@
+# Scheduled inactive-lead automation (AUTO-002)
+
+## Is it required?
+Evidence: every workspace is seeded with the rule "Lead inactive -> follow-up task" (shown on the Automations
+screen), the master plan calls inactive-lead re-engagement central to the lead-to-sale value proposition, and the
+feature tree lists it as built but never triggered. `PRODUCT.md` itself defers "advanced automation" without a
+commitment. Decision taken in Batch 1: ship the minimum scheduler for the rule that is already advertised in the UI;
+do not add other schedules.
+
+## Defined behaviour
+`npm run automations:scheduled` -> `scripts/run-inactive-lead-automations.ts` calls `evaluateInactiveLeads()` for every
+non-deleted workspace, one after another.
+
+| Aspect | Rule |
+| --- | --- |
+| Cadence | Daily. Railway cron is UTC: `0 3 * * *` = 03:00 UTC = 23:00 US Eastern (EDT) / 22:00 (EST). |
+| Timezone | Irrelevant to eligibility: inactivity is a rolling 14 x 24h window from `lastActivityAt`. |
+| Workspace coverage | All non-deleted workspaces. One workspace failing is logged; the rest still run; exit code 1 if any failed. |
+| Eligible leads | Not LOST / ARCHIVED / CONVERTED, not soft-deleted, `lastActivityAt` older than 14 days or null. Oldest first. |
+| Volume cap | 25 leads per workspace per run. A bigger backlog drains over successive days. |
+| Action | The workspace's enabled, un-paused `LEAD_INACTIVE` automations (default: create a follow-up task). It does **not** send a WhatsApp message. |
+| Idempotency | A lead with a non-FAILED `LEAD_INACTIVE` execution in the last 14 days is skipped. |
+| Retries | A FAILED execution does not block the lead; the next daily run retries it. No in-run retry loop. |
+| Duplicate-run prevention | Per-workspace Postgres advisory lock (`pg_try_advisory_xact_lock`) held for the whole evaluation. A second run (overlapping cron, second app instance, or the manual `POST /api/automations`) gets the lock denied and does nothing for that workspace. This is database-level, so it holds across instances. |
+
+Tests: `tests/security/inactive-lead-scheduler.test.ts` (eligibility, repeat-run skip, lock held elsewhere -> no-op then
+exactly-once, FAILED retried, paused rule ignored, converted/lost/archived ignored).
+
+Known limits: no per-action idempotency key inside `runAutomations` (AUTO-003, Batch 2); the evaluation itself is
+synchronous within the cron process (AUTO-005, Batch 2); a crash after a task is created but before its execution row
+is written could create one extra task on the next run.
+
+## Required manual action (not done by the repository)
+In the Railway project:
+1. Add a service from the same repo/image as the web service.
+2. Settings -> Cron Schedule: `0 3 * * *`. Start command: `npm run automations:scheduled`.
+3. Give it the same `DATABASE_URL` as the web service (nothing else is needed today).
+4. Trigger one run from the dashboard and confirm the log shows `[scheduled-automations] done ... failedWorkspaces=0`.
+
+Until step 4 is done, inactive-lead follow-up in production only happens when a user triggers it manually.

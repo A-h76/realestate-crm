@@ -1,12 +1,11 @@
-import { auth } from "@/lib/auth";
+import { requireAppAccess } from "@/lib/app-access";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
 import { CalendarClient } from "./calendar-client";
 
-export default async function CalendarPage() {
-  const session = await auth();
-  if (!session?.user) return null;
-  const workspaceId = session.user.workspaceId;
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ leadId?: string }> }) {
+  const { workspaceId, workspace } = await requireAppAccess();
+  const { leadId } = await searchParams;
 
   const [events, leads, opportunities] = await Promise.all([
     prisma.calendarEvent.findMany({
@@ -37,7 +36,7 @@ export default async function CalendarPage() {
       <PageHeader
         eyebrow="Schedule"
         title="Calendar"
-        description="Site visits and meetings via the demo calendar provider."
+        description="Showings, calls and meetings. Open any appointment to jump to the person or deal. Saved in Synas only; no external calendar is updated."
       />
       <CalendarClient
         initialEvents={events.map((ev) => ({
@@ -55,6 +54,9 @@ export default async function CalendarPage() {
           owner: ev.owner,
         }))}
         leads={leads}
+        nowIso={new Date().toISOString()}
+        timeZone={workspace.timezone}
+        initialLeadId={leadId && leads.some((l) => l.id === leadId) ? leadId : undefined}
         opportunities={opportunities}
       />
     </div>

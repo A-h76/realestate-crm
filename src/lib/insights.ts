@@ -211,6 +211,7 @@ export async function workspaceInsights(workspaceId: string, range: ReportRange)
       open: tasks.filter((t) => t.status === "TODO" || t.status === "IN_PROGRESS").length,
     },
     whatsappResponseRate,
+    whatsappOutboundThreads: outboundThreads,
     activityVolume: activities.length,
     pipelineAging: agingBuckets,
     stalled: stalled.sort((a, b) => b.daysInStage - a.daysInStage).slice(0, 12),

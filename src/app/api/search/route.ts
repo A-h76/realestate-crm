@@ -8,7 +8,7 @@ export const GET = measuredRoute("GET /api/search", async (request: Request) => 
   try {
     const { workspaceId, userId } = await requirePermission("search:use");
     await enforceRateLimit({ key: `search:${workspaceId}:${userId}`, ...RATE_LIMITS.search });
-    const q = (new URL(request.url).searchParams.get("q") ?? "").trim();
+    const q = (new URL(request.url).searchParams.get("q") ?? "").trim().slice(0, 100);
     if (q.length < 1) return jsonOk({ leads: [], accounts: [], contacts: [], properties: [], opportunities: [], tasks: [], proposals: [], activities: [] });
 
     const contains = { contains: q, mode: "insensitive" as const };

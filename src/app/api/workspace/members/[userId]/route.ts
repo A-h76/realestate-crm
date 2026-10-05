@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ApiError, jsonError, jsonOk, requirePermission, type WorkspaceAccess } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
 import { ASSIGNABLE_ROLES, memberChangeDenial } from "@/lib/authz";
+import { revokeUserSessions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { parseBody } from "@/lib/validations/common";
@@ -74,13 +75,15 @@ export const DELETE = measuredRoute(
 
       // Records the member owned stay in place (ownerId is kept for history); a manager reassigns them.
       await prisma.workspaceMember.delete({ where: { id: member.id } });
+      // Kill their live sessions now rather than when the JWT expires.
+      const sessionsRevoked = await revokeUserSessions(targetId);
       await writeAudit({
         workspaceId: access.workspaceId,
         actorId: access.userId,
         action: "MEMBER_REMOVED",
         entity: "WorkspaceMember",
         entityId: member.id,
-        metadata: { userId: targetId, role: member.role },
+        metadata: { userId: targetId, role: member.role, sessionsRevoked },
       });
       return jsonOk({ removed: true });
     } catch (error) {

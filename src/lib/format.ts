@@ -1,74 +1,112 @@
 import { formatInTimeZone } from "date-fns-tz";
 
-const KARACHI = "Asia/Karachi";
+/**
+ * US-market display formatting (US-07, US-08, US-13, US-14).
+ *
+ * Money goes through `Intl.NumberFormat` so the symbol, grouping and cents follow the
+ * currency itself rather than a hardcoded prefix. Dates and times render in an explicit
+ * IANA time zone — never the server's — in US order (MM/DD/YYYY) with 12-hour clock.
+ *
+ * `DEFAULT_TIMEZONE` is the fallback for call sites that have no workspace row loaded.
+ * Anything rendering workspace-scoped data should pass that workspace's `timezone` so
+ * dashboard roll-ups and their drill-downs cannot disagree.
+ */
 
-function groupThousands(value: number): string {
-  const rounded = Math.round(value);
-  const sign = rounded < 0 ? "-" : "";
-  const digits = String(Math.abs(rounded));
-  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${sign}${grouped}`;
-}
+export const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE?.trim() || "America/New_York";
+export const DEFAULT_CURRENCY = "USD" as const;
 
-export function formatPKR(amount: number | string | null | undefined): string {
-  if (amount === null || amount === undefined) return "Rs —";
-  const value = typeof amount === "string" ? Number(amount) : amount;
-  if (Number.isNaN(value)) return "Rs —";
-  return `Rs ${groupThousands(value)}`;
-}
+export type SupportedCurrency = "USD";
 
-export function formatCurrency(
-  amount: number | string | null | undefined,
-  currency: "PKR" | "USD" = "PKR",
-): string {
-  if (currency === "USD") {
-    const value = typeof amount === "string" ? Number(amount) : Number(amount ?? 0);
-    return `$ ${groupThousands(value)}`;
+const moneyFormatters = new Map<string, Intl.NumberFormat>();
+
+function moneyFormatter(currency: string, fractionDigits: number): Intl.NumberFormat {
+  const key = `${currency}:${fractionDigits}`;
+  let formatter = moneyFormatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    });
+    moneyFormatters.set(key, formatter);
   }
-  return formatPKR(amount);
+  return formatter;
 }
 
-export function formatDatePK(date: Date | string | null | undefined): string {
-  if (!date) return "—";
-  const d = typeof date === "string" ? new Date(date) : date;
-  return formatInTimeZone(d, KARACHI, "dd/MM/yyyy");
-}
-
-export function formatDateTimePK(date: Date | string | null | undefined): string {
-  if (!date) return "—";
-  const d = typeof date === "string" ? new Date(date) : date;
-  return formatInTimeZone(d, KARACHI, "dd/MM/yyyy HH:mm");
-}
-
-export function formatTimePK(date: Date | string | null | undefined): string {
-  if (!date) return "—";
-  const d = typeof date === "string" ? new Date(date) : date;
-  return formatInTimeZone(d, KARACHI, "HH:mm");
-}
-
-/** Normalize Pakistani phone / WhatsApp numbers toward +92XXXXXXXXXX */
-export function normalizePkPhone(input: string | null | undefined): string | null {
-  if (!input) return null;
-  const digits = input.replace(/[^\d+]/g, "");
-  if (digits.startsWith("+92") && digits.length === 13) return digits;
-  if (digits.startsWith("92") && digits.length === 12) return `+${digits}`;
-  if (digits.startsWith("0") && digits.length === 11) return `+92${digits.slice(1)}`;
-  if (digits.length === 10 && digits.startsWith("3")) return `+92${digits}`;
-  return digits.startsWith("+") ? digits : `+${digits}`;
-}
-
-export function isValidPkPhone(input: string | null | undefined): boolean {
-  const normalized = normalizePkPhone(input);
-  return Boolean(normalized && /^\+92\d{10}$/.test(normalized));
-}
-
-export function formatCompactPKR(amount: number | string | null | undefined): string {
-  if (amount === null || amount === undefined) return "Rs —";
+function toNumber(amount: number | string | null | undefined): number | null {
+  if (amount === null || amount === undefined || amount === "") return null;
   const value = typeof amount === "string" ? Number(amount) : amount;
-  if (Number.isNaN(value)) return "Rs —";
-  if (Math.abs(value) >= 1_000_000_000) return `Rs ${(value / 1_000_000_000).toFixed(2)}B`;
-  if (Math.abs(value) >= 1_000_000) return `Rs ${Math.round(value / 1_000_000)}M`;
-  return formatPKR(value);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** `$1,250,000` / `$1,250.50`. Null and unparseable amounts render as an em dash, never `$0`. */
+export function formatMoney(
+  amount: number | string | null | undefined,
+  currency: string = DEFAULT_CURRENCY,
+): string {
+  const value = toNumber(amount);
+  if (value === null) return "—";
+  // Listing prices are whole dollars; show cents only when the amount actually has them.
+  const hasCents = Math.abs(value % 1) > 0.0001;
+  return moneyFormatter(currency, hasCents ? 2 : 0).format(value);
+}
+
+/** KPI-tile form: `$1.25M`, `$450K`. Falls back to the full format below $1,000. */
+export function formatCompactMoney(
+  amount: number | string | null | undefined,
+  currency: string = DEFAULT_CURRENCY,
+): string {
+  const value = toNumber(amount);
+  if (value === null) return "—";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `${formatMoney(value / 1_000_000_000, currency)}B`.replace(/(\.\d*?)0+B$/, "$1B");
+  if (abs >= 1_000_000) return `${moneyFormatter(currency, 2).format(value / 1_000_000)}M`;
+  if (abs >= 1_000) return `${moneyFormatter(currency, 0).format(value / 1_000)}K`;
+  return formatMoney(value, currency);
+}
+
+export function formatDate(date: Date | string | null | undefined, timeZone: string = DEFAULT_TIMEZONE): string {
+  if (!date) return "—";
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "—";
+  return formatInTimeZone(d, timeZone, "MM/dd/yyyy");
+}
+
+export function formatDateTime(date: Date | string | null | undefined, timeZone: string = DEFAULT_TIMEZONE): string {
+  if (!date) return "—";
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "—";
+  return formatInTimeZone(d, timeZone, "MM/dd/yyyy h:mm a");
+}
+
+export function formatTime(date: Date | string | null | undefined, timeZone: string = DEFAULT_TIMEZONE): string {
+  if (!date) return "—";
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "—";
+  return formatInTimeZone(d, timeZone, "h:mm a");
+}
+
+/** `2,400 sq ft` — US listings are square feet; acres are shown with 2 decimals. */
+export function formatArea(
+  size: number | string | null | undefined,
+  unit: "SQFT" | "ACRE" | "SQM" | "OTHER" | null | undefined,
+): string {
+  const value = toNumber(size);
+  if (value === null) return "—";
+  const grouped = new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: unit === "ACRE" ? 2 : 0,
+  }).format(value);
+  switch (unit) {
+    case "ACRE":
+      return `${grouped} ${value === 1 ? "acre" : "acres"}`;
+    case "SQM":
+      return `${grouped} m²`;
+    case "SQFT":
+      return `${grouped} sq ft`;
+    default:
+      return grouped;
+  }
 }
 
 export function formatDeltaPct(current: number, previous: number): number | null {

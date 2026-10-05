@@ -1,12 +1,10 @@
-import { auth } from "@/lib/auth";
+import { requireAppAccess } from "@/lib/app-access";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
 import { PipelineBoard } from "./pipeline-board";
 
 export default async function PipelinePage() {
-  const session = await auth();
-  if (!session?.user) return null;
-  const workspaceId = session.user.workspaceId;
+  const { workspaceId } = await requireAppAccess();
 
   const [stages, opportunities] = await Promise.all([
     prisma.pipelineStage.findMany({
@@ -27,6 +25,24 @@ export default async function PipelinePage() {
 
   // eslint-disable-next-line react-hooks/purity -- request-time snapshot for aging
   const nowMs = Date.now();
+  const oppIds = opportunities.map((o) => o.id);
+  // Next action = what is actually planned: soonest open task, else next appointment, else the lead's own next action.
+  const [oppTasks, oppEvents] = await Promise.all([
+    prisma.task.findMany({
+      where: { workspaceId, opportunityId: { in: oppIds }, deletedAt: null, status: { in: ["TODO", "IN_PROGRESS"] } },
+      orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }],
+      select: { opportunityId: true, title: true },
+    }),
+    prisma.calendarEvent.findMany({
+      where: { workspaceId, opportunityId: { in: oppIds }, deletedAt: null, status: "SCHEDULED", startAt: { gte: new Date(nowMs) } },
+      orderBy: { startAt: "asc" },
+      select: { opportunityId: true, title: true },
+    }),
+  ]);
+  const plannedByOpp = new Map<string, string>();
+  for (const x of [...oppTasks, ...oppEvents]) {
+    if (x.opportunityId && !plannedByOpp.has(x.opportunityId)) plannedByOpp.set(x.opportunityId, x.title);
+  }
   const boardOpps = opportunities.map((o) => ({
     id: o.id,
     name: o.name,
@@ -39,15 +55,15 @@ export default async function PipelinePage() {
     leadName: o.lead ? `${o.lead.firstName} ${o.lead.lastName ?? ""}`.trim() : null,
     leadScore: o.lead?.leadScore ?? null,
     daysInStage: Math.max(0, Math.floor((nowMs - o.stageEnteredAt.getTime()) / 86400000)),
-    nextAction: o.lead?.nextAction ?? null,
+    nextAction: plannedByOpp.get(o.id) ?? o.lead?.nextAction ?? null,
   }));
 
   return (
     <div className="space-y-6 p-8">
       <PageHeader
-        eyebrow="Deal flow"
+        eyebrow="Pipeline"
         title="Pipeline"
-        description="Drag opportunities between stages. Moves persist to the database with activity and audit trails."
+        description="What deals are moving. Drag a deal to its next stage, or use the stage menu on a card."
       />
       <PipelineBoard
         stages={stages.map((s) => ({

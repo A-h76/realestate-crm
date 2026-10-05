@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useCan } from "@/components/providers/permissions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatCurrency, formatDateTimePK } from "@/lib/format";
+import { formatMoney, formatDateTime } from "@/lib/format";
 
 type ProposalRow = {
   id: string;
@@ -39,6 +40,7 @@ export function ProposalsClient({
   properties: Array<{ id: string; title: string }>;
   leads: Array<{ id: string; name: string }>;
 }) {
+  const canWrite = useCan("crm:write");
   const [proposals, setProposals] = useState(initialProposals);
   const [showCreate, setShowCreate] = useState(false);
   const [opportunityId, setOpportunityId] = useState(opportunities[0]?.id ?? "");
@@ -58,7 +60,7 @@ export function ProposalsClient({
         leadId: opp?.leadId ?? leads[0]?.id ?? null,
         linkedPropertyId: opp?.linkedPropertyId ?? properties[0]?.id ?? null,
         value: Number(value),
-        currency: "PKR",
+        currency: "USD",
         status: "DRAFT",
       }),
     });
@@ -126,12 +128,14 @@ export function ProposalsClient({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Button size="sm" variant="accent" onClick={() => setShowCreate((v) => !v)}>
-          {showCreate ? "Cancel" : "New proposal"}
-        </Button>
-      </div>
-      {showCreate ? (
+      {canWrite ? (
+        <div className="flex items-center justify-between">
+          <Button size="sm" variant="accent" onClick={() => setShowCreate((v) => !v)}>
+            {showCreate ? "Cancel" : "New proposal"}
+          </Button>
+        </div>
+      ) : null}
+      {canWrite && showCreate ? (
         <div className="grid gap-3 border border-border bg-surface p-4 md:grid-cols-3">
           <div className="space-y-1">
             <Label>Opportunity</Label>
@@ -152,7 +156,7 @@ export function ProposalsClient({
             </select>
           </div>
           <div className="space-y-1">
-            <Label>Value (PKR)</Label>
+            <Label>Value (USD)</Label>
             <Input value={value} onChange={(e) => setValue(e.target.value)} />
           </div>
           <div className="flex items-end">
@@ -163,7 +167,7 @@ export function ProposalsClient({
         </div>
       ) : null}
       {error ? <p className="text-sm text-danger">{error}</p> : null}
-      {notice ? <p className="text-sm text-accent">{notice}</p> : null}
+      {notice ? <p className="text-sm text-accent-text">{notice}</p> : null}
       <div className="overflow-x-auto border border-border">
         <table className="ops w-full min-w-[900px] text-left">
           <thead>
@@ -184,25 +188,26 @@ export function ProposalsClient({
                 <td className="px-3 py-2 font-medium">{p.proposalNumber}</td>
                 <td className="px-3 py-2">{p.opportunityName ?? "—"}</td>
                 <td className="px-3 py-2">{p.propertyTitle ?? "—"}</td>
-                <td className="px-3 py-2">{formatCurrency(p.value)}</td>
+                <td className="px-3 py-2">{formatMoney(p.value)}</td>
                 <td className="px-3 py-2">
                   <Badge tone="neutral">{p.status}</Badge>
                 </td>
                 <td className="mono px-3 py-2">{p.viewCount}</td>
-                <td className="mono px-3 py-2 text-xs">{formatDateTimePK(p.sentAt)}</td>
+                <td className="mono px-3 py-2 text-xs">{formatDateTime(p.sentAt)}</td>
                 <td className="px-3 py-2">
                   <div className="flex gap-1">
-                    {p.status === "DRAFT" ? (
+                    {!canWrite ? <span className="text-xs text-muted">View only</span> : null}
+                    {canWrite && p.status === "DRAFT" ? (
                       <Button size="sm" variant="outline" onClick={() => patchStatus(p.id, "SENT")}>
                         Mark sent
                       </Button>
                     ) : null}
-                    {p.status === "SENT" || p.status === "VIEWED" ? (
+                    {canWrite && (p.status === "SENT" || p.status === "VIEWED") ? (
                       <Button size="sm" variant="ghost" onClick={() => patchStatus(p.id, "VIEWED")}>
                         Mark viewed
                       </Button>
                     ) : null}
-                    {p.status === "SENT" || p.status === "VIEWED" || p.status === "NEGOTIATION" ? (
+                    {canWrite && (p.status === "SENT" || p.status === "VIEWED" || p.status === "NEGOTIATION") ? (
                       <Button
                         size="sm"
                         variant="accent"

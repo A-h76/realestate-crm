@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatCurrency } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 
 export type TrendPoint = { month: string; pipeline: number; weighted: number };
 export type SourceSlice = { name: string; value: number; color: string };
@@ -33,7 +33,7 @@ function ChartTip({
       {payload.map((p) => (
         <div key={p.name} className="flex justify-between gap-4">
           <span className="text-muted">{p.name}</span>
-          <span className="money">{formatCurrency(p.value)}</span>
+          <span className="money">{formatMoney(p.value)}</span>
         </div>
       ))}
     </div>

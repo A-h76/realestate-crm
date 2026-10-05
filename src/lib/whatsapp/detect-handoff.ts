@@ -30,7 +30,7 @@ export type HandoffContext = {
 
 export const HANDOFF_REASON_LABELS: Record<HandoffReason, string> = {
   HUMAN_REQUESTED: "Customer requested a human agent",
-  SITE_VISIT_REQUESTED: "Site visit requested",
+  SITE_VISIT_REQUESTED: "Showing requested",
   NEGOTIATION_REQUESTED: "Price negotiation requested",
   HUMAN_REQUIRED_FOR_PROPERTY_DETAILS: "Owner / document / legal question",
   INFORMATION_UNAVAILABLE: "Requested information is not available in the CRM",
@@ -43,7 +43,7 @@ export const HANDOFF_REASON_LABELS: Record<HandoffReason, string> = {
 
 export const SUGGESTED_ACTION_LABELS: Record<SuggestedAction, string> = {
   CONTACT_LEAD: "Contact lead",
-  SCHEDULE_SITE_VISIT: "Schedule site visit",
+  SCHEDULE_SITE_VISIT: "Schedule showing",
   HUMAN_NEGOTIATION: "Human negotiation",
   AGENT_REVIEW: "Agent review",
   REVIEW_ALTERNATIVES: "Suggest suitable alternatives or confirm availability with the customer/owner",
@@ -55,33 +55,34 @@ const RULES: Array<{ reason: HandoffReason; suggestedAction: SuggestedAction; co
     suggestedAction: "CONTACT_LEAD",
     confidence: "HIGH",
     pattern:
-      /\bagent\b.*\b(baat|bula)\b|\bcall\s*karwa\b|\b(talk|speak)\s*to\s*(?:an?\s*)?(?:agent|someone|human|representative)\b|\bkisi\s*(?:agent\s*)?se\s*baat\s*karni\b|\bconnect\s*me\s*(?:to|with)\s*(?:an?\s*)?agent\b/i,
+      /\b(?:talk|speak|chat)\s*(?:to|with)\s*(?:an?\s*)?(?:agent|realtor|someone|a\s*human|human|person|representative|rep)\b|\bconnect\s*me\s*(?:to|with)\b|\bcall\s*me\b|\bhave\s*(?:an?\s*)?(?:agent|realtor|someone)\s*call\b|\breal\s*person\b/i,
   },
   {
     reason: "HUMAN_REQUIRED_FOR_PROPERTY_DETAILS",
     suggestedAction: "AGENT_REVIEW",
     confidence: "HIGH",
     pattern:
-      /\bowner\b|\bdocuments?\b|\bregistry\b|\bownership\b|\blegal\b|\btitle\s*transfer\b|\bgenuine\b|\bverif\w*\b|\bloan\b|\bmortgage\b|\bfinancing\b/i,
+      /\b(?:seller|owner|landlord)\b|\bdocuments?\b|\bdisclosures?\b|\bdeed\b|\btitle\b|\bsurvey\b|\binspection\b|\bappraisal\b|\bescrow\b|\bhoa\b|\bcontingenc\w*\b|\blegal\b|\bverif\w*\b|\bloan\b|\bmortgage\b|\bfinancing\b|\bpre[\s-]?approv\w*\b|\bclosing\s*costs?\b|\bproperty\s*tax\w*\b/i,
   },
   {
     reason: "SITE_VISIT_REQUESTED",
     suggestedAction: "SCHEDULE_SITE_VISIT",
     confidence: "HIGH",
-    pattern: /\bvisit\b|\bviewing\b|\bdekhni\b|\bdekhna\b|\bdekh\s*sakte\b/i,
+    pattern:
+      /\bshowing\b|\btour\b|\bwalk[\s-]?through\b|\bviewing\b|\bvisit\b|\bopen\s*house\b|\bsee\s*(?:it|the\s*(?:place|house|home|unit|condo|property|listing))\b|\bcome\s*(?:by|see|look)\b|\btake\s*a\s*look\s*(?:at|in\s*person)\b/i,
   },
   {
     reason: "INFORMATION_UNAVAILABLE",
     suggestedAction: "AGENT_REVIEW",
     confidence: "MEDIUM",
-    pattern: /\blatest\s*availability\b|\bavailability\s*confirm\b|\bnegotiable\s*kitna\b|\bexact\s*(?:size|address|documents?)\b/i,
+    pattern: /\blatest\s*availability\b|\bconfirm\s*availability\b|\bexact\s*(?:square\s*footage|size|address|documents?|lot\s*size)\b|\bhow\s*negotiable\b/i,
   },
   {
     reason: "NEGOTIATION_REQUESTED",
     suggestedAction: "HUMAN_NEGOTIATION",
     confidence: "HIGH",
     pattern:
-      /\bfinal\s*price\b|\blast\s*price\b|\bthora\s*kam\b|\bkam\s*ho\s*sakta\b|\bho\s*jayega\b|\bnegotiable\b|\bkarwa\s*do\b|\bkarwado\b|\bdiscount\b|\bkam\s*karo\b|\bkam\s*kar\s*den\b/i,
+      /\bfinal\s*price\b|\bbest\s*(?:price|offer)\b|\bnegotiable\b|\bcome\s*down\b|\blower\s*(?:the\s*)?price\b|\bdiscount\b|\bmake\s*an?\s*offer\b|\bcounter(?:offer)?\b|\bbelow\s*asking\b|\broom\s*(?:to\s*(?:move|negotiate)|on\s*(?:the\s*)?price)\b|\bseller\s*credit\b/i,
   },
   {
     // Business-judgment requests the AI must not decide on its own: recommending
@@ -91,22 +92,23 @@ const RULES: Array<{ reason: HandoffReason; suggestedAction: SuggestedAction; co
     suggestedAction: "AGENT_REVIEW",
     confidence: "MEDIUM",
     pattern:
-      /\bcancel\b|\bwithdraw\b|\bbest\s*area\b|\bkonsa\s*area\b|\bkonsi\s*area\b|\balternative\s*area\b|\bdoosri\s*jagah\b|\bkoi\s*aur\s*(?:area|jagah)\b/i,
+      /\bcancel\b|\bwithdraw\b|\bback\s*out\b|\bbest\s*(?:area|neighborhood|school\s*district)\b|\bwhich\s*(?:area|neighborhood)\b|\balternative\s*(?:area|neighborhood)\b|\bsomewhere\s*else\b|\bany(?:where)?\s*other\s*(?:area|neighborhood)\b/i,
   },
   {
     reason: "HIGH_INTENT",
     suggestedAction: "AGENT_REVIEW",
     confidence: "MEDIUM",
-    pattern: /\bbook(?:ing)?\b|\btoken\b|\bdeal\s*final\b|\bfinal\s*karna\b|\bagreement\b|\badvance\s*dena\b/i,
+    pattern: /\bwrite\s*(?:an?\s*)?offer\b|\bput\s*in\s*an?\s*offer\b|\bearnest\s*money\b|\bdeposit\b|\bpurchase\s*agreement\b|\blease\s*agreement\b|\bsign\s*(?:the\s*)?(?:contract|lease|paperwork)\b|\bready\s*to\s*(?:buy|move\s*forward|sign)\b|\bapplication\b/i,
   },
 ];
 
-// ponytail: a handful of short, exact continuation tokens — enough to cover
-// "kal?" following a site-visit ask without building real conversation memory.
-const CONTINUATION_RE = /^(kal|kab|kb|ok|okay|haan|ji|confirm|done|theek\s*hai)\??\.?$/i;
+// ponytail: a handful of short, exact continuation tokens — enough to cover a bare
+// "tomorrow?" following a showing request without building real conversation memory.
+const CONTINUATION_RE =
+  /^(tomorrow|today|tonight|when|what\s*time|ok|okay|sure|yes|yeah|confirm|confirmed|done|sounds\s*good)\??\.?$/i;
 
 const FRUSTRATION_RE =
-  /\bconfus(?:ed|ing)\b|\bsamajh\s*nahi\b|\bnahi\s*samajh\b|\bkoi\s*jawab\s*nahi\b|\?{2,}|\b(?:3rd|third)\s*time\b|\bkitni\s*dafa\b/i;
+  /\bconfus(?:ed|ing)\b|\bdon'?t\s*understand\b|\bnot\s*(?:making\s*sense|helpful)\b|\bno\s*(?:one|body)\s*(?:has\s*)?(?:answered|replied|got(?:ten)?\s*back)\b|\bstill\s*waiting\b|\?{2,}|\b(?:3rd|third)\s*time\b|\bhow\s*many\s*times\b|\bthis\s*is\s*ridiculous\b/i;
 
 function matchDirect(message: string): HandoffDetection {
   for (const rule of RULES) {
@@ -119,7 +121,7 @@ function matchDirect(message: string): HandoffDetection {
 
 /**
  * Deterministic, rule-based handoff trigger. No LLM: a fixed set of
- * Roman Urdu / English keyword patterns, checked in priority order so the
+ * US English keyword patterns, checked in priority order so the
  * more specific/actionable category wins on overlap (e.g. "owner se baat
  * karwa dein" is a document/ownership question, not a generic negotiation).
  */

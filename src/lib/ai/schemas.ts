@@ -36,7 +36,8 @@ export const siteVisitPreparationSchema = callPreparationSchema.extend({
 
 export const followUpDraftSchema = z.object({
   channel: z.enum(["WHATSAPP", "EMAIL", "LINKEDIN"]),
-  language: z.enum(["EN", "UR_EN"]),
+  /** Single-market product: US English. */
+  language: z.literal("EN"),
   subject: z.string().nullable(),
   body: z.string().min(1),
   rationale: z.string(),
@@ -104,13 +105,13 @@ export const conversationAssistSchema = z.object({
   extractedRequirements: z
     .object({
       propertyPurpose: z.enum(["SALE", "RENT"]).nullable().optional(),
-      propertyTypePref: z.enum(["PLOT", "HOUSE", "APARTMENT", "COMMERCIAL", "AGRICULTURAL"]).nullable().optional(),
+      propertyTypePref: z.enum(["SINGLE_FAMILY", "CONDO", "TOWNHOUSE", "MULTI_FAMILY", "LAND", "COMMERCIAL"]).nullable().optional(),
       preferredArea: z.string().max(80).nullable().optional(),
       budgetMin: z.number().nonnegative().nullable().optional(),
       budgetMax: z.number().nonnegative().nullable().optional(),
       sizePrefMin: z.number().nonnegative().nullable().optional(),
       sizePrefMax: z.number().nonnegative().nullable().optional(),
-      sizeUnitPref: z.enum(["MARLA", "KANAL", "SQFT", "OTHER"]).nullable().optional(),
+      sizeUnitPref: z.enum(["SQFT", "ACRE", "SQM", "OTHER"]).nullable().optional(),
       bedroomPref: z.number().int().nonnegative().nullable().optional(),
     })
     .partial(),

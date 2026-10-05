@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { prisma } from "@/lib/db";
 import { parseAiOutput, lostDealAnalysisSchema } from "./schemas";
 import { storeIntelligenceRun } from "./store";
@@ -56,5 +56,5 @@ export async function analyzeLostDeal(input: {
 }
 
 export function lostDealValueHint(value: { toString(): string } | number) {
-  return formatCurrency(typeof value === "number" ? value : Number(value));
+  return formatMoney(typeof value === "number" ? value : Number(value));
 }

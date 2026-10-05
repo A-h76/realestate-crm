@@ -1,5 +1,5 @@
 import { MapPin } from "lucide-react";
-import { formatTimePK } from "@/lib/format";
+import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export type TimelineActivity = {
@@ -38,7 +38,7 @@ export function ActivityTimeline({
                 siteVisit ? "bg-accent" : "bg-foreground",
               )}
             />
-            <div className="meta w-14 shrink-0 pt-0.5">{formatTimePK(activity.date)}</div>
+            <div className="meta w-14 shrink-0 pt-0.5">{formatTime(activity.date)}</div>
             <div className="min-w-0 flex-1">
               <div className="text-[13px] font-medium uppercase tracking-[0.08em]">
                 {activity.title ?? activity.type.replaceAll("_", " ")}

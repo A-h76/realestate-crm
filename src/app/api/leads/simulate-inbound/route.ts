@@ -6,44 +6,46 @@ import { measuredRoute } from "@/lib/perf";
 
 const DEMO_NOTICE = "Demo simulation — not connected to Meta Lead Ads.";
 
+// Fictional US buyers and renters. The 555-01xx line range is reserved for fictional use, so
+// no simulated lead can resolve to a real person's phone.
 const DEMO_FACEBOOK_LEADS = [
   {
-    firstName: "Bilal",
-    lastName: "Aslam",
-    phone: "+923011122334",
-    preferredArea: "Bahria Town",
-    propertyTypePref: "HOUSE" as const,
+    firstName: "Brianna",
+    lastName: "Whitfield",
+    phone: "+14155550142",
+    preferredArea: "Noe Valley",
+    propertyTypePref: "SINGLE_FAMILY" as const,
     propertyPurpose: "SALE" as const,
-    budgetMin: 30000000,
-    budgetMax: 55000000,
+    budgetMin: 1_200_000,
+    budgetMax: 1_650_000,
     bedroomPref: 4,
-    estimatedValue: 42000000,
+    estimatedValue: 1_450_000,
     intentType: "BUY" as const,
   },
   {
-    firstName: "Ayesha",
-    lastName: "Rehman",
-    phone: "+923021234567",
-    preferredArea: "DHA Phase 5",
-    propertyTypePref: "APARTMENT" as const,
+    firstName: "Marcus",
+    lastName: "Delgado",
+    phone: "+13125550188",
+    preferredArea: "Logan Square",
+    propertyTypePref: "CONDO" as const,
     propertyPurpose: "RENT" as const,
-    budgetMin: 150000,
-    budgetMax: 250000,
-    bedroomPref: 3,
-    estimatedValue: 2400000,
+    budgetMin: 2_400,
+    budgetMax: 3_200,
+    bedroomPref: 2,
+    estimatedValue: 38_400,
     intentType: "RENT" as const,
   },
   {
-    firstName: "Usman",
-    lastName: "Tariq",
-    phone: "+923331239876",
-    preferredArea: "Gulberg",
-    propertyTypePref: "HOUSE" as const,
+    firstName: "Danielle",
+    lastName: "Okonkwo",
+    phone: "+14805550173",
+    preferredArea: "Arcadia",
+    propertyTypePref: "SINGLE_FAMILY" as const,
     propertyPurpose: "SALE" as const,
-    budgetMin: 60000000,
-    budgetMax: 90000000,
-    bedroomPref: 5,
-    estimatedValue: 75000000,
+    budgetMin: 650_000,
+    budgetMax: 875_000,
+    bedroomPref: 3,
+    estimatedValue: 740_000,
     intentType: "BUY" as const,
   },
 ];
@@ -65,7 +67,7 @@ export const POST = measuredRoute("POST /api/leads/simulate-inbound", async () =
       whatsappNumber: template.phone,
       source: "FACEBOOK_ADS",
       notes: DEMO_NOTICE,
-    });
+    }, { allowDuplicate: true }); // demo-only: the same canned lead may be generated repeatedly
 
     return jsonOk(
       {

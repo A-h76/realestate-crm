@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requireAppAccess } from "@/lib/app-access";
 import { PageHeader } from "@/components/page-header";
 import { workspaceInsights, resolveReportRange, pipelineAging } from "@/lib/insights";
-import { formatCurrency } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { EditorialStat, RangeChips } from "@/components/editorial";
 
 export default async function InsightsPage({
@@ -10,13 +10,12 @@ export default async function InsightsPage({
 }: {
   searchParams: Promise<{ range?: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user) return null;
+  const { workspaceId } = await requireAppAccess();
   const { range: preset = "30d" } = await searchParams;
   const range = resolveReportRange(preset);
   const [insights, aging] = await Promise.all([
-    workspaceInsights(session.user.workspaceId, range),
-    pipelineAging(session.user.workspaceId),
+    workspaceInsights(workspaceId, range),
+    pipelineAging(workspaceId),
   ]);
 
   const stalled = aging.filter((r) => r.daysInStage >= 14);
@@ -44,7 +43,7 @@ export default async function InsightsPage({
       <section className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
         <EditorialStat label="Leads" value={String(insights.totals.leads)} />
         <EditorialStat label="Win rate" value={`${Math.round(insights.conversionRates.opportunityWin * 100)}%`} />
-        <EditorialStat label="Avg deal" value={formatCurrency(insights.averageDealSize)} />
+        <EditorialStat label="Avg deal" value={formatMoney(insights.averageDealSize)} />
         <EditorialStat label="Sales cycle" value={`${Math.round(insights.salesCycleDays)}d`} />
       </section>
 
@@ -109,7 +108,7 @@ export default async function InsightsPage({
                     </td>
                     <td className="py-3 text-muted">{row.stageName}</td>
                     <td className="mono py-3">{row.daysInStage}</td>
-                    <td className="mono py-3">{formatCurrency(row.value)}</td>
+                    <td className="mono py-3">{formatMoney(row.value)}</td>
                     <td className="py-3 text-muted">{row.ownerName ?? "—"}</td>
                     <td className="py-3 text-muted">{row.nextAction ?? "—"}</td>
                   </tr>

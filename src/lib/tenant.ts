@@ -134,8 +134,9 @@ export async function touchLeadActivity(
   workspaceId: string,
   leadId: string,
   at: Date = new Date(),
+  db: Pick<typeof prisma, "lead"> = prisma,
 ): Promise<void> {
-  const result = await prisma.lead.updateMany({
+  const result = await db.lead.updateMany({
     where: { id: leadId, workspaceId, deletedAt: null },
     data: { lastActivityAt: at },
   });

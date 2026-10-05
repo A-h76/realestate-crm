@@ -30,8 +30,14 @@ function areaClose(a?: string | null, b?: string | null) {
   return na === nb || na.includes(nb) || nb.includes(na);
 }
 
-function dhaFamily(a?: string | null) {
-  return Boolean(a && /\bdha\b/i.test(a));
+/**
+ * Partial-credit area match: the listing is in the city the lead named, but not in the
+ * specific neighborhood they named. Works in any metro — a buyer asking for Lincoln Park
+ * still sees other Chicago listings, scored below an exact hit.
+ */
+function sameCity(preferredArea: string | null | undefined, property: Property) {
+  if (!preferredArea) return false;
+  return areaClose(preferredArea, property.city);
 }
 
 const AVAILABLE: PropertyStatus[] = ["AVAILABLE"];
@@ -63,9 +69,9 @@ export function scorePropertyMatch(lead: Lead, property: Property): ScoredProper
   if (lead.preferredArea && areaClose(lead.preferredArea, property.area)) {
     score += 18;
     reasons.push({ factor: "Area", detail: property.area ?? lead.preferredArea, points: 18 });
-  } else if (lead.preferredArea && dhaFamily(lead.preferredArea) && dhaFamily(property.area)) {
+  } else if (sameCity(lead.preferredArea, property)) {
     score += 13;
-    reasons.push({ factor: "Area", detail: `${property.area} (DHA family)`, points: 13 });
+    reasons.push({ factor: "Area", detail: `${property.area ?? property.city} (same city)`, points: 13 });
   } else if (lead.preferredArea && property.area) {
     reasons.push({ factor: "Area", detail: `${property.area} vs ${lead.preferredArea}`, points: 0 });
   }
@@ -147,6 +153,9 @@ export function scorePropertyMatch(lead: Lead, property: Property): ScoredProper
 export function filterAndScoreProperties(lead: Lead, properties: Property[]): ScoredPropertyMatch[] {
   const filtered = properties.filter((property) => {
     if (property.deletedAt) return false;
+    // Defence in depth: every caller already loads properties for the lead's workspace, but a listing from another
+    // workspace must never be matched (or shown) even if a future caller forgets the scope.
+    if (property.workspaceId !== lead.workspaceId) return false;
     if (property.status === "WITHDRAWN" || property.status === "SOLD" || property.status === "RENTED") {
       return false;
     }
@@ -160,4 +169,23 @@ export function filterAndScoreProperties(lead: Lead, properties: Property[]): Sc
     .filter((row) => row.matchScore >= 35)
     .sort((a, b) => b.matchScore - a.matchScore)
     .slice(0, 8);
+}
+
+const PLAIN_FACTOR: Record<string, string> = {
+  Type: "property type",
+  Purpose: "purpose",
+  Area: "location",
+  Budget: "budget",
+  Size: "size",
+  Bedrooms: "bedrooms",
+  Bathrooms: "bathrooms",
+  Timeline: "timeline",
+};
+
+/** "Fits budget, location and bedrooms." Built only from the factors that actually scored points. */
+export function plainMatchSummary(reasons: Array<Pick<PropertyMatchReason, "factor"> & { points?: number }>): string {
+  const fits = [...new Set(reasons.filter((r) => (r.points ?? 1) > 0).map((r) => PLAIN_FACTOR[r.factor]).filter(Boolean))];
+  if (fits.length === 0) return "Partial match.";
+  const list = fits.length === 1 ? fits[0] : `${fits.slice(0, -1).join(", ")} and ${fits[fits.length - 1]}`;
+  return `Fits ${list}.`;
 }

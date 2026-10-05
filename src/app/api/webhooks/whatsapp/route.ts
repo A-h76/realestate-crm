@@ -4,6 +4,7 @@ import { jsonError } from "@/lib/api";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { clientIp } from "@/lib/security/request";
 import { processWhatsAppWebhook } from "@/lib/webhooks/whatsapp";
+import { logEvent } from "@/lib/log";
 import { measuredRoute } from "@/lib/perf";
 
 
@@ -36,7 +37,7 @@ export const POST = measuredRoute("POST /api/webhooks/whatsapp", async (request:
     if (error instanceof ApiError) {
       return jsonError(error);
     }
-    console.error("whatsapp_webhook_failed");
+    logEvent("error", "whatsapp_webhook_failed", { error });
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 });

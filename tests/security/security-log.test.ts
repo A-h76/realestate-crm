@@ -22,8 +22,9 @@ describe("jsonError security tracing", () => {
     for (const status of [401, 403, 429]) {
       const lines = await captureWarn(() => jsonError(new ApiError(status, "denied")));
       assert.equal(lines.length, 1, `expected exactly one warn for status ${status}`);
-      assert.match(lines[0], /\[SECURITY\]/);
-      assert.match(lines[0], new RegExp(`status=${status}`));
+      const entry = JSON.parse(lines[0]);
+      assert.equal(entry.event, "security_event");
+      assert.equal(entry.status, status);
     }
   });
 

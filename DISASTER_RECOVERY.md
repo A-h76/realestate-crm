@@ -77,6 +77,11 @@ only applies committed migration files under `prisma/migrations/` in order
 — it never infers or auto-applies schema drift, so a bad migration can't
 silently reshape a live database the way `db push` could.
 
+**Rebuilding from scratch / baseline (updated in Batch 2):** `prisma/migrations/20260101000000_baseline` now creates the
+pre-migration schema, so `prisma migrate deploy` works on an EMPTY database (previously it failed on the first migration).
+An existing database already contains that schema and must be told so once: `npx prisma migrate resolve --applied
+20260101000000_baseline`. Full procedure, rollback scripts and the migration compatibility table: `docs/ops/ROLLBACK-RUNBOOK.md`.
+
 **One-time step before this first deploys to an existing production
 database:** if production was previously deployed with `db push` (no
 `_prisma_migrations` tracking table), `migrate deploy` will try to run

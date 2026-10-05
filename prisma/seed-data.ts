@@ -18,9 +18,9 @@ const FIXED = {
   workspaceId: "ws_synas_realty_demo",
   brandingId: "brand_synas_realty",
   users: {
-    ahmed: "user_ahmed_khan",
-    sara: "user_sara_malik",
-    bilal: "user_bilal_hussain",
+    owner: "user_dana_whitfield",
+    admin: "user_sofia_reyes",
+    agent: "user_marcus_bell",
   },
   stages: {
     NEW: "stage_new",
@@ -34,41 +34,54 @@ const FIXED = {
   },
 } as const;
 
+/** Chicago-metro neighborhoods and suburbs — the demo workspace's service area. */
 const AREAS = [
-  "DHA Phase 6",
-  "DHA Phase 8",
-  "Bahria Town",
-  "Gulberg",
-  "Model Town",
-  "Johar Town",
-  "Cantt",
-  "Wapda Town",
+  "Lincoln Park",
+  "Logan Square",
+  "Wicker Park",
+  "Hyde Park",
+  "Oak Park",
+  "Evanston",
+  "Naperville",
+  "Arlington Heights",
 ];
 
+/** City/state/ZIP for each area above, so demo listings carry a real US address shape. */
+const AREA_ADDRESS: Record<string, { city: string; state: string; postalCode: string }> = {
+  "Lincoln Park": { city: "Chicago", state: "IL", postalCode: "60614" },
+  "Logan Square": { city: "Chicago", state: "IL", postalCode: "60647" },
+  "Wicker Park": { city: "Chicago", state: "IL", postalCode: "60622" },
+  "Hyde Park": { city: "Chicago", state: "IL", postalCode: "60615" },
+  "Oak Park": { city: "Oak Park", state: "IL", postalCode: "60302" },
+  Evanston: { city: "Evanston", state: "IL", postalCode: "60201" },
+  Naperville: { city: "Naperville", state: "IL", postalCode: "60540" },
+  "Arlington Heights": { city: "Arlington Heights", state: "IL", postalCode: "60004" },
+};
+
 const FIRST = [
-  "Ali", "Hassan", "Fatima", "Ayesha", "Usman", "Zainab", "Omar", "Maryam",
-  "Hamza", "Sana", "Imran", "Nadia", "Tariq", "Hira", "Kamran", "Mehwish",
-  "Fahad", "Rabia", "Shahid", "Iqra", "Asad", "Noor", "Waleed", "Saima",
-  "Junaid", "Amna", "Rizwan", "Bushra", "Saad", "Mahnoor",
+  "James", "Olivia", "Ethan", "Sophia", "Liam", "Ava", "Noah", "Isabella",
+  "Mason", "Mia", "Lucas", "Charlotte", "Henry", "Amelia", "Owen", "Harper",
+  "Caleb", "Evelyn", "Nathan", "Abigail", "Jordan", "Nora", "Elijah", "Lily",
+  "Marcus", "Grace", "Andre", "Ruby", "Devin", "Camila",
 ];
 
 const LAST = [
-  "Khan", "Ahmed", "Malik", "Hussain", "Raza", "Sheikh", "Butt", "Qureshi",
-  "Chaudhry", "Syed", "Mirza", "Dar", "Awan", "Bajwa", "Gill", "Hashmi",
+  "Whitfield", "Reyes", "Bell", "Okonkwo", "Donovan", "Hayes", "Caldwell", "Nguyen",
+  "Brennan", "Delgado", "Sorensen", "Mathis", "Kowalski", "Ferraro", "Abbott", "Prescott",
 ];
 
 const SOURCES = [
-  "ZAMEEN",
-  "FACEBOOK_ADS",
+  "ZILLOW",
+  "REALTOR_COM",
+  "WEB_FORM",
+  "OPEN_HOUSE",
+  "SIGN_CALL",
+  "AGENT_REFERRAL",
   "REFERRAL",
-  "WALK_IN",
-  "SIGNBOARD",
   "WHATSAPP_INBOUND",
-  "COLD_CALL",
-  "EXISTING_CLIENT",
 ] as const;
 
-const PROPERTY_TYPES = ["PLOT", "HOUSE", "APARTMENT", "COMMERCIAL", "AGRICULTURAL"] as const;
+const PROPERTY_TYPES = ["SINGLE_FAMILY", "CONDO", "TOWNHOUSE", "MULTI_FAMILY", "LAND"] as const;
 
 function daysAgo(n: number) {
   return new Date(Date.now() - n * 86400000);
@@ -152,9 +165,9 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
 
   // Ensure users exist (global)
   const users = [
-    { id: FIXED.users.ahmed, email: "ahmed@synaslabs.demo", name: "Ahmed Khan" },
-    { id: FIXED.users.sara, email: "sara@synaslabs.demo", name: "Sara Malik" },
-    { id: FIXED.users.bilal, email: "bilal@synaslabs.demo", name: "Bilal Hussain" },
+    { id: FIXED.users.owner, email: "dana@synaslabs.demo", name: "Dana Whitfield" },
+    { id: FIXED.users.admin, email: "sofia@synaslabs.demo", name: "Sofia Reyes" },
+    { id: FIXED.users.agent, email: "marcus@synaslabs.demo", name: "Marcus Bell" },
   ];
 
   for (const u of users) {
@@ -165,7 +178,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         email: u.email,
         name: u.name,
         passwordHash,
-        phone: u.id === FIXED.users.ahmed ? "+923001112233" : u.id === FIXED.users.sara ? "+923004445566" : "+923007778899",
+        phone: u.id === FIXED.users.owner ? "+13125550101" : u.id === FIXED.users.admin ? "+13125550102" : "+13125550103",
       },
       update: {
         name: u.name,
@@ -186,8 +199,8 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
       id: FIXED.workspaceId,
       name: "Synas Realty Demo",
       slug: WORKSPACE_SLUG,
-      timezone: "Asia/Karachi",
-      currency: "PKR",
+      timezone: "America/Chicago",
+      currency: "USD",
       isDemo: true,
       branding: {
         create: {
@@ -200,9 +213,9 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
       },
       members: {
         create: [
-          { userId: FIXED.users.ahmed, role: "OWNER" },
-          { userId: FIXED.users.sara, role: "ADMIN" },
-          { userId: FIXED.users.bilal, role: "AGENT" },
+          { userId: FIXED.users.owner, role: "OWNER" },
+          { userId: FIXED.users.admin, role: "ADMIN" },
+          { userId: FIXED.users.agent, role: "AGENT" },
         ],
       },
     },
@@ -236,7 +249,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
     });
   }
 
-  const ownerIds = [FIXED.users.ahmed, FIXED.users.sara, FIXED.users.bilal];
+  const ownerIds = [FIXED.users.owner, FIXED.users.admin, FIXED.users.agent];
 
   // Accounts (30)
   const accounts = [];
@@ -247,12 +260,12 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         id: `acc_demo_${String(i + 1).padStart(2, "0")}`,
         workspaceId: workspace.id,
         company,
-        website: `https://example-${i + 1}.demo.pk`,
+        website: `https://example-${i + 1}.demo`,
         industry: ["Real Estate", "Construction", "Investment", "Retail"][i % 4],
         companySize: ["1-10", "11-50", "51-200", "200+"][i % 4],
         locationArea: AREAS[i % AREAS.length],
-        city: "Lahore",
-        revenueRange: ["₨ 5–20M", "₨ 20–50M", "₨ 50–100M", "₨ 100M+"][i % 4],
+        city: AREA_ADDRESS[AREAS[i % AREAS.length]].city,
+        revenueRange: ["$1–5M", "$5–20M", "$20–50M", "$50M+"][i % 4],
         ownerId: ownerIds[i % ownerIds.length],
         notes: "Fictional demo account for Synas Labs demos.",
       },
@@ -273,16 +286,18 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         firstName,
         lastName,
         title: ["Director", "Buyer", "Seller", "Investor", "Manager"][i % 5],
-        email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}${i}@demo.pk`.replace(/\s/g, ""),
-        phone: `+92300${String(1000000 + i).slice(0, 7)}`,
-        whatsappNumber: `+92300${String(1000000 + i).slice(0, 7)}`,
+        email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}${i}@demo.example`.replace(/\s/g, ""),
+        // 555-01xx is the reserved fictional US range: these can never dial a real person.
+        phone: `+1312555${String(1100 + i).padStart(4, "0")}`,
+        whatsappNumber: `+1312555${String(1100 + i).padStart(4, "0")}`,
         notes: "Fictional contact.",
       },
     });
     contacts.push(contact);
   }
 
-  // Properties (22) — include DHA Phase 6 1 Kanal for matching
+  // Properties (24) — the Lincoln Park single-family listings exist so the demo lead has
+  // strong, explainable matches to score against.
   const properties = [];
   const propertySeeds: Array<{
     id: string;
@@ -291,62 +306,74 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
     type: (typeof PROPERTY_TYPES)[number];
     purpose: "SALE" | "RENT";
     size: number;
-    unit: "MARLA" | "KANAL" | "SQFT";
+    unit: "SQFT" | "ACRE";
     bedrooms?: number;
     price: number;
     status: "AVAILABLE" | "RESERVED" | "SOLD" | "RENTED";
   }> = [
     {
-      id: "prop_dha6_1kanal",
-      title: "DHA Phase 6 — 1 Kanal House",
-      area: "DHA Phase 6",
-      type: "HOUSE",
+      id: "prop_lincoln_park_sfh",
+      title: "2214 N Cleveland Ave — Renovated Greystone",
+      area: "Lincoln Park",
+      type: "SINGLE_FAMILY",
       purpose: "SALE",
-      size: 1,
-      unit: "KANAL",
+      size: 3850,
+      unit: "SQFT",
       bedrooms: 5,
-      price: 95000000,
+      price: 1_875_000,
       status: "AVAILABLE",
     },
     {
-      id: "prop_dha6_92m",
-      title: "1 Kanal House",
-      area: "DHA Phase 6",
-      type: "HOUSE",
+      id: "prop_lincoln_park_sfh_2",
+      title: "1740 N Burling St — Classic Row House",
+      area: "Lincoln Park",
+      type: "SINGLE_FAMILY",
       purpose: "SALE",
-      size: 1,
-      unit: "KANAL",
+      size: 3600,
+      unit: "SQFT",
       bedrooms: 4,
-      price: 92000000,
+      price: 1_725_000,
       status: "AVAILABLE",
     },
     {
-      id: "prop_dha5_88m",
-      title: "1 Kanal House",
-      area: "DHA Phase 5",
-      type: "HOUSE",
+      id: "prop_wicker_park_sfh",
+      title: "1455 N Hoyne Ave — Updated Four Square",
+      area: "Wicker Park",
+      type: "SINGLE_FAMILY",
       purpose: "SALE",
-      size: 1,
-      unit: "KANAL",
+      size: 3400,
+      unit: "SQFT",
       bedrooms: 4,
-      price: 88000000,
+      price: 1_595_000,
       status: "AVAILABLE",
     },
   ];
 
+  const TYPE_LABEL: Record<(typeof PROPERTY_TYPES)[number], string> = {
+    SINGLE_FAMILY: "Single-Family Home",
+    CONDO: "Condo",
+    TOWNHOUSE: "Townhouse",
+    MULTI_FAMILY: "Two-Flat",
+    LAND: "Vacant Lot",
+  };
+
   for (let i = 0; i < 21; i++) {
     const area = AREAS[i % AREAS.length];
     const type = PROPERTY_TYPES[i % PROPERTY_TYPES.length];
+    const isRent = i % 5 === 0;
+    const isLand = type === "LAND";
     propertySeeds.push({
       id: `prop_demo_${String(i + 1).padStart(2, "0")}`,
-      title: `${area} ${type.charAt(0) + type.slice(1).toLowerCase()} ${i + 1}`,
+      title: `${100 + i * 7} ${["N Oakley Ave", "W Shakespeare Ave", "S Dorchester Ave", "N Harvey Ave", "W Jackson Blvd"][i % 5]} — ${area} ${TYPE_LABEL[type]}`,
       area,
       type,
-      purpose: i % 5 === 0 ? "RENT" : "SALE",
-      size: type === "PLOT" ? [5, 10, 1][i % 3] : [5, 10, 1, 2][i % 4],
-      unit: type === "APARTMENT" ? "SQFT" : i % 3 === 0 ? "KANAL" : "MARLA",
-      bedrooms: type === "HOUSE" || type === "APARTMENT" ? 2 + (i % 4) : undefined,
-      price: 4500000 + i * 2750000,
+      purpose: isRent ? "RENT" : "SALE",
+      // Land is listed in acres; everything else in finished square feet.
+      size: isLand ? [0.17, 0.25, 0.34][i % 3] : [980, 1450, 1900, 2600][i % 4],
+      unit: isLand ? "ACRE" : "SQFT",
+      bedrooms: type === "LAND" ? undefined : 1 + (i % 4),
+      // Rents are monthly; sale prices are Chicago-metro realistic.
+      price: isRent ? 1_850 + (i % 6) * 420 : 325_000 + i * 62_500,
       status: (["AVAILABLE", "AVAILABLE", "RESERVED", "SOLD", "RENTED"] as const)[i % 5],
     });
   }
@@ -358,19 +385,23 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         id: p.id,
         workspaceId: workspace.id,
         title: p.title,
-        description: `Fictional listing in ${p.area} for demo purposes.`,
-        address: `Street ${(i % 20) + 1}, ${p.area}`,
+        description: `Fictional ${p.area} listing for demo purposes.`,
+        // The street number/name is already in the title; keep the address consistent with it.
+        address: p.title.split(" — ")[0],
         area: p.area,
-        city: "Lahore",
+        city: AREA_ADDRESS[p.area].city,
+        state: AREA_ADDRESS[p.area].state,
+        postalCode: AREA_ADDRESS[p.area].postalCode,
         propertyType: p.type,
         purpose: p.purpose,
         size: p.size,
         sizeUnit: p.unit,
         bedrooms: p.bedrooms,
-        bathrooms: p.id === "prop_dha6_92m" ? 5 : p.id === "prop_dha5_88m" ? 4 : p.bedrooms ? Math.max(1, p.bedrooms - 1) : null,
-        furnishedStatus: p.type === "APARTMENT" ? "Semi-furnished" : "Unfurnished",
+        // US listings quote half baths, e.g. 3.5.
+        bathrooms: p.bedrooms ? Math.max(1, p.bedrooms - 1) : null,
+        furnishedStatus: p.purpose === "RENT" ? "Unfurnished" : null,
         price: p.price,
-        currency: "PKR",
+        currency: "USD",
         status: p.status,
         listingType: i % 3 === 0 ? "EXCLUSIVE" : "OPEN",
         ownerContactId: contacts[i % contacts.length].id,
@@ -393,25 +424,25 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
       workspaceId: workspace.id,
       firstName: "No Followup",
       lastName: "Demo",
-      company: "Walk-in Prospect",
+      company: "Open House Walk-in",
       email: "no.followup.demo@synaslabs.demo",
-      phone: "+923211110001",
-      whatsappNumber: "+923211110001",
+      phone: "+17735550101",
+      whatsappNumber: "+17735550101",
       industry: "Real Estate",
-      source: "WALK_IN",
+      source: "OPEN_HOUSE",
       stage: "NEW",
       intentType: "BUY",
-      preferredArea: "Gulberg",
-      budgetMin: 40000000,
-      budgetMax: 100000000,
+      preferredArea: "Logan Square",
+      budgetMin: 400_000,
+      budgetMax: 650_000,
       propertyPurpose: "SALE",
-      propertyTypePref: "HOUSE",
-      sizeUnitPref: "KANAL",
-      bedroomPref: 5,
+      propertyTypePref: "SINGLE_FAMILY",
+      sizeUnitPref: "SQFT",
+      bedroomPref: 3,
       timeline: "30 days",
       followUpDue: null,
-      estimatedValue: 85000000,
-      ownerId: FIXED.users.bilal,
+      estimatedValue: 525_000,
+      ownerId: FIXED.users.agent,
       accountId: accounts[0].id,
       contactId: contacts[0].id,
       leadScore: 62,
@@ -427,69 +458,69 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
 
   const buyerPrefLead = await prisma.lead.create({
     data: {
-      id: "lead_buyer_pref_dha6",
+      id: "lead_buyer_pref_lincoln_park",
       workspaceId: workspace.id,
-      firstName: "Ahmed",
-      lastName: "Raza",
-      email: "buyer.pref.dha@synaslabs.demo",
-      phone: "+923211110099",
-      whatsappNumber: "+923211110099",
-      source: "WHATSAPP_INBOUND",
+      firstName: "Rebecca",
+      lastName: "Donovan",
+      email: "rebecca.donovan@demo.example",
+      phone: "+17735550199",
+      whatsappNumber: "+17735550199",
+      source: "ZILLOW",
       stage: "QUALIFIED",
       intentType: "BUY",
-      preferredArea: "DHA Phase 6",
-      budgetMin: 70000000,
-      budgetMax: 100000000,
+      preferredArea: "Lincoln Park",
+      budgetMin: 1_600_000,
+      budgetMax: 1_950_000,
       propertyPurpose: "SALE",
-      propertyTypePref: "HOUSE",
-      sizePrefMin: 1,
-      sizePrefMax: 1,
-      sizeUnitPref: "KANAL",
+      propertyTypePref: "SINGLE_FAMILY",
+      sizePrefMin: 3200,
+      sizePrefMax: 4200,
+      sizeUnitPref: "SQFT",
       bedroomPref: 4,
-      bathroomPref: 5,
-      furnishedPref: "Unfurnished",
+      bathroomPref: 3,
+      furnishedPref: null,
       timeline: "45 days",
       followUpDue: daysFromNow(3),
-      estimatedValue: 90000000,
-      ownerId: FIXED.users.sara,
+      estimatedValue: 1_800_000,
+      ownerId: FIXED.users.admin,
       accountId: accounts[2].id,
       contactId: contacts[2].id,
       leadScore: 84,
       fitScore: 87,
       intentScore: 72,
       valueScore: 81,
-      nextAction: "Schedule site visit",
+      nextAction: "Schedule showing",
       lastActivityAt: daysAgo(1),
-      notes: "FLAGSHIP DEMO: high-value DHA Phase 6 buyer. 1 Kanal brief, WhatsApp-active.",
+      notes: "DEMO: high-value Lincoln Park buyer, pre-approved, actively messaging.",
     },
   });
   leads.push(buyerPrefLead);
 
-  // Matching leads for DHA Phase 6 1 Kanal
+  // Competing buyers on the same Lincoln Park inventory, so the matcher has something real to rank.
   for (let m = 0; m < 3; m++) {
     const lead = await prisma.lead.create({
       data: {
-        id: `lead_match_dha6_${m + 1}`,
+        id: `lead_match_lincoln_park_${m + 1}`,
         workspaceId: workspace.id,
         firstName: FIRST[m + 5],
         lastName: LAST[m + 2],
-        email: `dha6.buyer${m + 1}@demo.pk`,
-        phone: `+92321112000${m}`,
-        whatsappNumber: `+92321112000${m}`,
+        email: `lincolnpark.buyer${m + 1}@demo.example`,
+        phone: `+1773555020${m}`,
+        whatsappNumber: `+1773555020${m}`,
         source: SOURCES[m % SOURCES.length],
         stage: "QUALIFIED",
         intentType: "BUY",
-        preferredArea: "DHA Phase 6",
-        budgetMin: 70000000,
-        budgetMax: 120000000,
+        preferredArea: "Lincoln Park",
+        budgetMin: 1_500_000,
+        budgetMax: 2_100_000,
         propertyPurpose: "SALE",
-        propertyTypePref: "HOUSE",
-        sizePrefMin: 1,
-        sizeUnitPref: "KANAL",
-        bedroomPref: 5,
+        propertyTypePref: "SINGLE_FAMILY",
+        sizePrefMin: 3000,
+        sizeUnitPref: "SQFT",
+        bedroomPref: 4,
         timeline: "60 days",
         followUpDue: daysFromNow(2 + m),
-        estimatedValue: 90000000 + m * 2000000,
+        estimatedValue: 1_800_000 + m * 60_000,
         ownerId: ownerIds[m % ownerIds.length],
         accountId: accounts[(m + 1) % accounts.length].id,
         contactId: contacts[(m + 1) % contacts.length].id,
@@ -497,7 +528,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         fitScore: 88,
         intentScore: 80,
         valueScore: 90,
-        nextAction: "Share DHA Phase 6 shortlist",
+        nextAction: "Share Lincoln Park shortlist",
         lastActivityAt: daysAgo(1),
       },
     });
@@ -515,23 +546,24 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         firstName,
         lastName,
         company: i % 3 === 0 ? accounts[i % accounts.length].company : null,
-        email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}.l${i}@demo.pk`,
-        phone: `+92322${String(2000000 + i).slice(0, 7)}`,
-        whatsappNumber: `+92322${String(2000000 + i).slice(0, 7)}`,
+        email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}.l${i}@demo.example`,
+        phone: `+1847555${String(1000 + i).padStart(4, "0")}`,
+        whatsappNumber: `+1847555${String(1000 + i).padStart(4, "0")}`,
         industry: ["Real Estate", "Retail", "Tech", "Healthcare"][i % 4],
         source: SOURCES[i % SOURCES.length],
         stage: (["NEW", "CONTACTED", "QUALIFIED", "NURTURING", "CONVERTED"] as const)[i % 5],
         intentType: (["BUY", "SELL", "RENT", "INVEST", "UNKNOWN"] as const)[i % 5],
         preferredArea: area,
-        budgetMin: 5000000 + i * 500000,
-        budgetMax: 15000000 + i * 1000000,
+        // Rent seekers think in monthly dollars, buyers in purchase price.
+        budgetMin: i % 4 === 0 ? 1_800 + (i % 5) * 250 : 320_000 + i * 24_000,
+        budgetMax: i % 4 === 0 ? 2_900 + (i % 5) * 300 : 480_000 + i * 31_000,
         propertyPurpose: i % 4 === 0 ? "RENT" : "SALE",
         propertyTypePref: PROPERTY_TYPES[i % PROPERTY_TYPES.length],
-        sizeUnitPref: "MARLA",
+        sizeUnitPref: "SQFT",
         bedroomPref: 2 + (i % 4),
         timeline: ["Immediate", "30 days", "60 days", "90 days"][i % 4],
         followUpDue: i % 7 === 0 ? daysAgo(2) : daysFromNow((i % 10) + 1),
-        estimatedValue: 8000000 + i * 1500000,
+        estimatedValue: i % 4 === 0 ? 28_800 + i * 900 : 400_000 + i * 27_000,
         ownerId: ownerIds[i % ownerIds.length],
         accountId: accounts[i % accounts.length].id,
         contactId: contacts[i % contacts.length].id,
@@ -539,7 +571,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         fitScore: 35 + (i % 55),
         intentScore: 30 + (i % 60),
         valueScore: 45 + (i % 50),
-        nextAction: ["Call", "WhatsApp follow-up", "Send inventory", "Confirm visit"][i % 4],
+        nextAction: ["Call", "Text follow-up", "Send listings", "Confirm showing"][i % 4],
         lastActivityAt: daysAgo(i % 12),
         createdAt: daysAgo(40 - (i % 35)),
       },
@@ -554,20 +586,20 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
     data: {
       id: "opp_stalled_high_value",
       workspaceId: workspace.id,
-      name: "Stalled High Value DHA",
+      name: "Stalled High-Value — Lincoln Park",
       accountId: accounts[1].id,
       primaryContactId: contacts[1].id,
       leadId: leads[1].id,
-      linkedPropertyId: "prop_dha6_1kanal",
+      linkedPropertyId: "prop_lincoln_park_sfh",
       dealSide: "BUYER",
-      value: 95000000,
-      currency: "PKR",
+      value: 1_875_000,
+      currency: "USD",
       probability: 80,
       stageId: FIXED.stages.NEGOTIATION,
-      ownerId: FIXED.users.ahmed,
+      ownerId: FIXED.users.owner,
       expectedCloseDate: daysFromNow(10),
-      source: "ZAMEEN",
-      description: "High-value DHA Phase 6 buyer — stalled in negotiation.",
+      source: "ZILLOW",
+      description: "High-value Lincoln Park buyer — stalled in negotiation.",
       stageEnteredAt: daysAgo(21),
       createdAt: daysAgo(45),
     },
@@ -578,17 +610,17 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
     data: {
       id: "opp_buyer_demo",
       workspaceId: workspace.id,
-      name: "Ahmed Raza — DHA Phase 6 Kanal",
+      name: "Rebecca Donovan — Lincoln Park Greystone",
       accountId: accounts[2].id,
       primaryContactId: contacts[2].id,
       leadId: buyerPrefLead.id,
-      linkedPropertyId: "prop_dha6_1kanal",
+      linkedPropertyId: "prop_lincoln_park_sfh",
       dealSide: "BUYER",
-      value: 92000000,
-      currency: "PKR",
+      value: 1_825_000,
+      currency: "USD",
       probability: 35,
       stageId: FIXED.stages.DISCOVERY,
-      ownerId: FIXED.users.sara,
+      ownerId: FIXED.users.admin,
       expectedCloseDate: daysFromNow(40),
       source: "WHATSAPP_INBOUND",
       description: "Buyer opportunity linked to property-preference lead.",
@@ -602,20 +634,20 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
     data: {
       id: "opp_seller_demo",
       workspaceId: workspace.id,
-      name: "Seller Listing — Gulberg Commercial",
+      name: "Seller Listing — Wicker Park Two-Flat",
       accountId: accounts[3].id,
       primaryContactId: contacts[3].id,
       leadId: leads[5].id,
       linkedPropertyId: properties[4].id,
       dealSide: "SELLER",
-      value: 185000000,
-      currency: "PKR",
+      value: 845_000,
+      currency: "USD",
       probability: 50,
       stageId: FIXED.stages.SOLUTION,
-      ownerId: FIXED.users.bilal,
+      ownerId: FIXED.users.agent,
       expectedCloseDate: daysFromNow(25),
       source: "REFERRAL",
-      description: "Seller listing opportunity for commercial asset.",
+      description: "Seller-side listing mandate.",
       notes: "REQUIRED DEMO: dealSide SELLER",
       stageEnteredAt: daysAgo(8),
     },
@@ -647,7 +679,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         linkedPropertyId: properties[i % properties.length].id,
         dealSide: i % 2 === 0 ? "BUYER" : "SELLER",
         value: 12000000 + i * 3500000,
-        currency: "PKR",
+        currency: "USD",
         probability: stageProb,
         stageId,
         ownerId: ownerIds[i % ownerIds.length],
@@ -672,14 +704,14 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
       opportunityId: stalled.id,
       linkedPropertyId: stalled.linkedPropertyId,
       value: 95000000,
-      currency: "PKR",
+      currency: "USD",
       status: "VIEWED",
       sentAt: daysAgo(5),
       viewedAt: daysAgo(1),
       viewCount: 4,
       expiryAt: daysFromNow(10),
       notes: "Viewed multiple times — demo scenario.",
-      ownerId: FIXED.users.ahmed,
+      ownerId: FIXED.users.owner,
     },
   });
   proposals.push(viewed);
@@ -696,7 +728,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         opportunityId: opp.id,
         linkedPropertyId: opp.linkedPropertyId,
         value: Number(opp.value),
-        currency: "PKR",
+        currency: "USD",
         status,
         sentAt: status === "DRAFT" ? null : daysAgo(3 + (i % 5)),
         viewedAt: ["VIEWED", "NEGOTIATION", "ACCEPTED"].includes(status) ? daysAgo(1) : null,
@@ -709,7 +741,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
     proposals.push(proposal);
   }
 
-  // Calendar — upcoming site visit tomorrow (relative to seed run)
+  // Calendar — upcoming showing tomorrow (relative to seed run)
   const tomorrowStart = daysFromNow(1);
   tomorrowStart.setHours(11, 0, 0, 0);
   const tomorrowEnd = new Date(tomorrowStart.getTime() + 2 * 3600000);
@@ -718,14 +750,14 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
     data: {
       id: "cal_site_visit_tomorrow",
       workspaceId: workspace.id,
-      title: "Demo Site Visit — DHA Phase 6",
+      title: "Showing — 2214 N Cleveland Ave",
       type: "SITE_VISIT",
       status: "SCHEDULED",
       startAt: tomorrowStart,
       endAt: tomorrowEnd,
-      location: "DHA Phase 6 — 1 Kanal House, Lahore",
+      location: "2214 N Cleveland Ave, Chicago, IL 60614",
       notes: "REQUIRED DEMO: SITE_VISIT starting tomorrow",
-      ownerId: FIXED.users.sara,
+      ownerId: FIXED.users.admin,
       leadId: buyerPrefLead.id,
       opportunityId: buyerOpp.id,
       contactId: contacts[2].id,
@@ -740,7 +772,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
       data: {
         id: `cal_demo_${String(i + 1).padStart(2, "0")}`,
         workspaceId: workspace.id,
-        title: i % 3 === 0 ? `Site Visit — ${AREAS[i % AREAS.length]}` : `Meeting — ${FIRST[i]}`,
+        title: i % 3 === 0 ? `Showing — ${AREAS[i % AREAS.length]}` : `Meeting — ${FIRST[i]}`,
         type: i % 3 === 0 ? "SITE_VISIT" : i % 3 === 1 ? "MEETING" : "FOLLOW_UP",
         status: "SCHEDULED",
         startAt: daysFromNow(i + 2),
@@ -767,7 +799,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         workspaceId: workspace.id,
         conversationId,
         direction: "INBOUND",
-        body: `Assalam o Alaikum — interested in property in ${lead.preferredArea ?? "Lahore"}.`,
+        body: `Hi — I'm interested in what you have in ${lead.preferredArea ?? "the area"}.`,
         status: "READ",
         leadId: lead.id,
         provider: "demo",
@@ -778,7 +810,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         workspaceId: workspace.id,
         conversationId,
         direction: "OUTBOUND",
-        body: "JazakAllah — sharing a shortlist shortly. When can we schedule a site visit?",
+        body: "Thanks for reaching out! I'll send a shortlist shortly — when works for a showing?",
         status: "READ",
         leadId: lead.id,
         senderId: ownerIds[i % ownerIds.length],
@@ -808,7 +840,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         workspaceId: workspace.id,
         conversationId: `lead:${buyerPrefLead.id}`,
         direction: "INBOUND",
-        body: "Assalam o Alaikum, DHA Phase 6 mein 1 Kanal house dekhna hai, budget 9 crore ke around.",
+        body: "Hi, we're looking for a 4+ bedroom single-family home in Lincoln Park, up to about $1.9M.",
         status: "READ",
         leadId: buyerPrefLead.id,
         opportunityId: buyerOpp.id,
@@ -820,11 +852,11 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         workspaceId: workspace.id,
         conversationId: `lead:${buyerPrefLead.id}`,
         direction: "OUTBOUND",
-        body: "Walaikum Assalam Ahmed. Phase 6 1 Kanal brief note kar liya. Shortlist bhejta hoon.",
+        body: "Thanks Rebecca — noted: Lincoln Park, 4+ beds, up to $1.9M. I'll send a shortlist today.",
         status: "READ",
         leadId: buyerPrefLead.id,
         opportunityId: buyerOpp.id,
-        senderId: FIXED.users.sara,
+        senderId: FIXED.users.admin,
         provider: "demo",
         sentAt: daysAgo(2),
       },
@@ -853,7 +885,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         title: [
           "Follow up on WhatsApp",
           "Prepare proposal pack",
-          "Confirm site visit",
+          "Confirm showing",
           "Collect CNIC copy",
           "Negotiate final offer",
         ][i % 5],
@@ -930,7 +962,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
     data: [
       {
         workspaceId: workspace.id,
-        actorId: FIXED.users.ahmed,
+        actorId: FIXED.users.owner,
         action: "LEAD_CREATED",
         entity: "Lead",
         entityId: noFollowUp.id,
@@ -938,7 +970,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
       },
       {
         workspaceId: workspace.id,
-        actorId: FIXED.users.ahmed,
+        actorId: FIXED.users.owner,
         action: "OPPORTUNITY_CREATED",
         entity: "Opportunity",
         entityId: stalled.id,
@@ -946,7 +978,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
       },
       {
         workspaceId: workspace.id,
-        actorId: FIXED.users.sara,
+        actorId: FIXED.users.admin,
         action: "PROPOSAL_VIEWED",
         entity: "Proposal",
         entityId: viewed.id,
@@ -954,7 +986,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
       },
       {
         workspaceId: workspace.id,
-        actorId: FIXED.users.sara,
+        actorId: FIXED.users.admin,
         action: "CALENDAR_EVENT_CREATED",
         entity: "CalendarEvent",
         entityId: siteVisit.id,
@@ -1073,12 +1105,12 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
         intentScore: 72,
         valueScore: 81,
         confidence: 94,
-        niche: "DHA Phase 6 · 1 Kanal house · buyer",
-        likelyNeed: "1 Kanal family house in DHA Phase 6 within ₨70–100M",
-        painPoints: ["Wants DHA Phase 6 specifically", "Budget ceiling around ₨100,000,000", "45-day decision window"],
-        recommendedAction: "Schedule site visit",
+        niche: "Lincoln Park · single-family · buyer",
+        likelyNeed: "4+ bedroom single-family home in Lincoln Park between $1.6M and $1.95M",
+        painPoints: ["Wants Lincoln Park specifically", "Budget ceiling around $1,950,000", "45-day decision window"],
+        recommendedAction: "Schedule showing",
         reasoning:
-          "Ahmed Raza is a qualified WhatsApp inbound buyer with a stated DHA Phase 6 / 1 Kanal brief and a ₨70–100M budget. Highest-leverage next step is a site visit against the 94% and 87% matches.",
+          "Rebecca Donovan is a qualified Zillow buyer with a stated Lincoln Park / 4-bedroom single-family brief and a $1.6–1.95M budget. Highest-leverage next step is a showing against the 94% and 87% matches.",
       },
     },
   });
@@ -1092,7 +1124,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
       fitScore: 87,
       intentScore: 72,
       valueScore: 81,
-      reason: "Lead scheduled a site visit and responded to WhatsApp follow-up.",
+      reason: "Lead scheduled a showing and responded to the follow-up message.",
       createdAt: daysAgo(1),
     },
   });
@@ -1101,37 +1133,37 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
     data: [
       {
         workspaceId: workspace.id,
-        userId: FIXED.users.sara,
+        userId: FIXED.users.admin,
         type: "HIGH_VALUE_LEAD",
-        title: "High-value DHA Phase 6 buyer",
-        body: "Ahmed Raza · ₨90,000,000 · 84 score",
+        title: "High-value Lincoln Park buyer",
+        body: "Rebecca Donovan · $1,800,000 · 84 score",
         href: `/leads/${buyerPrefLead.id}`,
         entityType: "Lead",
         entityId: buyerPrefLead.id,
       },
       {
         workspaceId: workspace.id,
-        userId: FIXED.users.sara,
+        userId: FIXED.users.admin,
         type: "SITE_VISIT_TOMORROW",
         title: "Site visit tomorrow",
-        body: "DHA Phase 6 — 1 Kanal House at 11:00",
+        body: "2214 N Cleveland Ave showing at 11:00 AM",
         href: "/calendar",
         entityType: "CalendarEvent",
         entityId: siteVisit.id,
       },
       {
         workspaceId: workspace.id,
-        userId: FIXED.users.ahmed,
+        userId: FIXED.users.owner,
         type: "OPPORTUNITY_STALLED",
         title: "High-value opportunity stalled",
-        body: "DHA negotiation idle 21 days",
+        body: "Lincoln Park negotiation idle 21 days",
         href: "/opportunities/opp_stalled_high_value",
         entityType: "Opportunity",
         entityId: stalled.id,
       },
       {
         workspaceId: workspace.id,
-        userId: FIXED.users.ahmed,
+        userId: FIXED.users.owner,
         type: "PROPOSAL_VIEWED",
         title: "Proposal viewed 4 times",
         body: "PROP-VIEWED-001",
@@ -1145,9 +1177,9 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
   return {
     workspaceId: workspace.id,
     userIds: {
-      ahmed: FIXED.users.ahmed,
-      sara: FIXED.users.sara,
-      bilal: FIXED.users.bilal,
+      ahmed: FIXED.users.owner,
+      sara: FIXED.users.admin,
+      bilal: FIXED.users.agent,
     },
     counts: {
       users: 3,

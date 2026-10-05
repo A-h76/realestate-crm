@@ -35,7 +35,7 @@ export function ResetDemoButton() {
       <Button variant="danger" onClick={onReset} disabled={loading}>
         {loading ? "Resetting…" : "Reset Demo"}
       </Button>
-      {message ? <p className="text-sm text-accent">{message}</p> : null}
+      {message ? <p className="text-sm text-accent-text">{message}</p> : null}
       {error ? <p className="text-sm text-danger">{error}</p> : null}
     </div>
   );

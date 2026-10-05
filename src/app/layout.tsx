@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Inter, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import "./globals.css";
@@ -16,7 +17,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Synas Labs · Lead-to-Sale CRM",
   description:
-    "WhatsApp-first, PKR-denominated, site-visit-driven sales OS for Pakistani real estate.",
+    "AI-assisted lead-to-sale CRM for US residential real estate teams: speed to lead, verified follow-up, and a pipeline that reconciles.",
 };
 
 const STRIP_INSPECTOR_ATTRS = `(function(){
@@ -52,12 +53,15 @@ const STRIP_INSPECTOR_ATTRS = `(function(){
   });
 })();`;
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+// Async on purpose: reading the request headers makes every page render per request, which is what lets Next apply
+// the per-request CSP nonce (SEC-010). A statically prerendered page would ship scripts without a nonce and be blocked.
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     <html lang="en" className={`${inter.variable} ${geistMono.variable} h-full antialiased`}>
       {process.env.NODE_ENV === "development" ? (
         <head>
-          <script dangerouslySetInnerHTML={{ __html: STRIP_INSPECTOR_ATTRS }} />
+          <script nonce={nonce} dangerouslySetInnerHTML={{ __html: STRIP_INSPECTOR_ATTRS }} />
         </head>
       ) : null}
       <body className="flex min-h-full flex-col bg-background text-foreground">

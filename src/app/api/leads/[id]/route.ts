@@ -7,7 +7,9 @@ import { assertRelationsInWorkspace } from "@/lib/tenant";
 import { emptyToNull } from "@/lib/validations/helpers";
 import { parseBody } from "@/lib/validations/common";
 import { leadUpdateSchema } from "@/lib/validations/leads";
-import { runAutomations } from "@/lib/automation/engine";
+import { dayBucket, runAutomations } from "@/lib/automation/engine";
+import { storedPhone } from "@/lib/leads/create-lead";
+import { findDuplicateLead, identityKeys, lockLeadIdentities } from "@/lib/leads/identity";
 import { measuredRoute } from "@/lib/perf";
 
 
@@ -43,7 +45,7 @@ export const PATCH = measuredRoute("PATCH /api/leads/:id", async (request: Reque
     await enforceRateLimit({ key: `mut:${workspaceId}:${userId}`, ...RATE_LIMITS.mutation });
     const { id } = await context.params;
     const existing = await findLead(workspaceId, id);
-    const body = emptyToNull(parseBody(leadUpdateSchema, await request.json()));
+    const { allowDuplicate, ...body } = emptyToNull(parseBody(leadUpdateSchema, await request.json()));
     // Reassignment is a manager action; agents claim leads via /take-over instead.
     if (body.ownerId !== undefined && body.ownerId !== existing.ownerId && !roleHasPermission(role, "leads:assign")) {
       throw new ApiError(403, "Insufficient permissions");
@@ -54,12 +56,34 @@ export const PATCH = measuredRoute("PATCH /api/leads/:id", async (request: Reque
       contactId: body.contactId,
     });
 
-    const updated = await prisma.lead.updateMany({
-      where: { id, workspaceId, deletedAt: null },
-      data: {
-        ...body,
-        email: body.email === undefined ? undefined : body.email || null,
-      },
+    const identityChanged = (["phone", "whatsappNumber", "email"] as const).some(
+      (key) => body[key] !== undefined && body[key] !== existing[key],
+    );
+    const identity = {
+      phone: body.phone !== undefined ? body.phone : existing.phone,
+      whatsappNumber: body.whatsappNumber !== undefined ? body.whatsappNumber : existing.whatsappNumber,
+      email: body.email !== undefined ? body.email : existing.email,
+    };
+    // DATA-001: editing a phone/email onto one that another lead already has is a duplicate too.
+    const updated = await prisma.$transaction(async (tx) => {
+      if (identityChanged && !allowDuplicate) {
+        await lockLeadIdentities(tx, workspaceId, identityKeys(identity));
+        const duplicate = await findDuplicateLead(tx, workspaceId, identity, id);
+        if (duplicate) {
+          throw new ApiError(409, "Another lead already has this phone number or email", undefined, {
+            duplicateOf: { id: duplicate.id, name: `${duplicate.firstName} ${duplicate.lastName ?? ""}`.trim() },
+          });
+        }
+      }
+      return tx.lead.updateMany({
+        where: { id, workspaceId, deletedAt: null },
+        data: {
+          ...body,
+          phone: storedPhone(body.phone),
+          whatsappNumber: storedPhone(body.whatsappNumber),
+          email: body.email === undefined ? undefined : body.email || null,
+        },
+      });
     });
     if (updated.count === 0) throw new ApiError(404, "Lead not found");
     const lead = await findLead(workspaceId, id);
@@ -83,6 +107,7 @@ export const PATCH = measuredRoute("PATCH /api/leads/:id", async (request: Reque
         actorId: userId,
         trigger: "LEAD_QUALIFIED",
         leadId: lead.id,
+        eventKey: `lead-qualified:${lead.id}:${dayBucket()}`,
       });
     }
 

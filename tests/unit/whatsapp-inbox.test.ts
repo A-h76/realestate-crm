@@ -53,12 +53,12 @@ describe("parseHandoffTask", () => {
     const description = [
       "HUMAN HANDOFF REQUIRED",
       "",
-      "Reason: Site visit requested",
-      "Lead: Ahmed Khan (+923001234567)",
-      "Requirement: 5 Marla, House, DHA Phase 2, Rent",
+      "Reason: Showing requested",
+      "Lead: Ethan Caldwell (+14155550123)",
+      "Requirement: 1650 SQFT, Townhouse, Logan Square, Rent",
       "Matched Properties: 3",
-      'Last Customer Message: "kal property dekh sakte hain?"',
-      "Suggested Action: Schedule site visit",
+      'Last Customer Message: "can we schedule a showing tomorrow?"',
+      "Suggested Action: Schedule showing",
       "Priority: HIGH",
       "",
       "[handoff:SITE_VISIT_REQUESTED]",
@@ -67,8 +67,8 @@ describe("parseHandoffTask", () => {
     assert.ok(parsed);
     assert.equal(parsed?.taskId, "t1");
     assert.equal(parsed?.reasonCode, "SITE_VISIT_REQUESTED");
-    assert.equal(parsed?.reasonLabel, "Site visit requested");
-    assert.equal(parsed?.actionLabel, "Schedule site visit");
+    assert.equal(parsed?.reasonLabel, "Showing requested");
+    assert.equal(parsed?.actionLabel, "Schedule showing");
     assert.equal(parsed?.status, "TODO");
   });
 
@@ -86,7 +86,7 @@ describe("parseHandoffTask", () => {
   });
 
   it("reports IN_PROGRESS once an agent has taken over, distinct from an unclaimed TODO handoff", () => {
-    const description = "Reason: Site visit requested\nSuggested Action: Schedule site visit\n\n[handoff:SITE_VISIT_REQUESTED]";
+    const description = "Reason: Showing requested\nSuggested Action: Schedule showing\n\n[handoff:SITE_VISIT_REQUESTED]";
     const claimed = parseHandoffTask({ id: "t1", description, priority: "HIGH", status: "IN_PROGRESS" });
     assert.equal(claimed?.status, "IN_PROGRESS");
     const unclaimed = parseHandoffTask({ id: "t1", description, priority: "HIGH", status: "TODO" });
@@ -168,11 +168,11 @@ describe("buildCrmEvents", () => {
 
   it("renders a handoff (SYSTEM) activity with missing notes gracefully", () => {
     const events = buildCrmEvents(
-      [{ id: "a1", type: "SYSTEM", title: "Human handoff — Site visit requested", notes: null, date: new Date("2026-01-01T10:00:00Z") }],
+      [{ id: "a1", type: "SYSTEM", title: "Human handoff — Showing requested", notes: null, date: new Date("2026-01-01T10:00:00Z") }],
       [],
     );
     assert.equal(events.length, 1);
-    assert.equal(events[0].title, "Human handoff — Site visit requested");
+    assert.equal(events[0].title, "Human handoff — Showing requested");
     assert.equal(events[0].detail, null);
   });
 

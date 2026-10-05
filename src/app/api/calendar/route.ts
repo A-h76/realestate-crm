@@ -33,7 +33,7 @@ export const GET = measuredRoute("GET /api/calendar", async (request: Request) =
       provider: provider.name,
       demo: provider.isDemo,
       notice: provider.isDemo
-        ? "Demo Calendar — events are local only; no Google Calendar sync."
+        ? "Internal CRM calendar — events are stored in the CRM only; no external calendar sync."
         : undefined,
     });
   } catch (error) {
@@ -109,9 +109,7 @@ export const POST = measuredRoute("POST /api/calendar", async (request: Request)
       {
         ...event,
         demo: provider.isDemo,
-        message: provider.isDemo
-          ? "Demo Calendar event generated. No external calendar was updated."
-          : "Calendar event stored in CRM. Google Calendar is only updated when a user OAuth token is present.",
+        message: "Calendar event stored in the CRM. No external calendar was updated.",
       },
       201,
     );

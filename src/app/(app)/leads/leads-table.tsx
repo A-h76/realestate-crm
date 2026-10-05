@@ -17,7 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { formatCurrency, formatDatePK, formatDateTimePK } from "@/lib/format";
+import { useCan } from "@/components/providers/permissions";
+import { formatMoney, formatDate, formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export type LeadRow = {
@@ -40,6 +41,10 @@ export type LeadRow = {
   createdAt: string;
   estimatedValue?: string | number | null;
   owner?: { id: string; name: string } | null;
+  /** Explainable attention (see @/lib/attention): derived on the server from real timestamps. */
+  state?: string;
+  priorityLevel?: "high" | "normal" | "lower";
+  why?: string[];
 };
 
 type SortKey =
@@ -66,6 +71,8 @@ type ColumnKey =
   | "intent"
   | "valueScore"
   | "stage"
+  | "status"
+  | "why"
   | "owner"
   | "lastActivity"
   | "nextAction"
@@ -82,12 +89,16 @@ const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: "intent", label: "Intent" },
   { key: "valueScore", label: "Value Score" },
   { key: "stage", label: "Stage" },
+  { key: "status", label: "Status" },
+  { key: "why", label: "Why" },
   { key: "owner", label: "Owner" },
   { key: "lastActivity", label: "Last Activity" },
   { key: "nextAction", label: "Next Action" },
   { key: "followUp", label: "Follow-up" },
   { key: "created", label: "Created" },
 ];
+
+const DEFAULT_COLUMNS = new Set<ColumnKey>(["lead", "stage", "status", "why", "owner", "nextAction", "lastActivity"]);
 
 const STAGE_OPTIONS = [
   "NEW",
@@ -100,14 +111,23 @@ const STAGE_OPTIONS = [
 ];
 
 const SOURCE_OPTIONS = [
-  "ZAMEEN",
+  "ZILLOW",
+  "REALTOR_COM",
+  "HOMES_COM",
+  "WEB_FORM",
+  "OPEN_HOUSE",
+  "SIGN_CALL",
+  "AGENT_REFERRAL",
   "FACEBOOK_ADS",
   "REFERRAL",
   "WALK_IN",
-  "SIGNBOARD",
-  "WHATSAPP_INBOUND",
   "COLD_CALL",
   "EXISTING_CLIENT",
+  "WHATSAPP_INBOUND",
+  "GOOGLE_ADS",
+  "PHONE",
+  "MANUAL",
+  "OTHER",
 ];
 
 const PAGE_SIZE = 20;
@@ -165,7 +185,11 @@ function SortBtn({
   );
 }
 
-export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
+export function LeadsTable({ initialLeads, emptyMessage }: { initialLeads?: LeadRow[]; emptyMessage?: string }) {
+  const canWrite = useCan("crm:write");
+  const canDelete = useCan("crm:delete");
+  const canExport = useCan("csv:export");
+  const canImport = useCan("csv:import");
   const [leads, setLeads] = useState<LeadRow[]>(initialLeads ?? []);
   const [loading, setLoading] = useState(!initialLeads);
   const [error, setError] = useState<string | null>(null);
@@ -176,12 +200,14 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [visible, setVisible] = useState<Record<ColumnKey, boolean>>(
-    Object.fromEntries(ALL_COLUMNS.map((c) => [c.key, true])) as Record<ColumnKey, boolean>,
+    // Progressive disclosure: the everyday columns first; scores, source and the rest are one click away under Columns.
+    Object.fromEntries(ALL_COLUMNS.map((c) => [c.key, DEFAULT_COLUMNS.has(c.key)])) as Record<ColumnKey, boolean>,
   );
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [duplicate, setDuplicate] = useState<{ id: string; name: string } | null>(null);
   const [importing, setImporting] = useState(false);
   const [importReport, setImportReport] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -205,7 +231,12 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
         throw new Error(data.error ?? "Failed to load leads");
       }
       const data = await res.json();
-      setLeads(Array.isArray(data) ? data : (data.items ?? data.leads ?? []));
+      const items: LeadRow[] = Array.isArray(data) ? data : (data.items ?? data.leads ?? []);
+      // The API has no attention fields; keep what the server rendered for leads we already had.
+      setLeads((prev) => {
+        const known = new Map(prev.map((l) => [l.id, l]));
+        return items.map((l) => ({ ...(known.get(l.id) ? { state: known.get(l.id)!.state, priorityLevel: known.get(l.id)!.priorityLevel, why: known.get(l.id)!.why } : {}), ...l }));
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load leads");
     } finally {
@@ -273,11 +304,12 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
     }
   }
 
-  async function createLead(e: React.FormEvent) {
-    e.preventDefault();
+  async function createLead(e: React.FormEvent | null, allowDuplicate = false) {
+    e?.preventDefault();
     if (!form.firstName.trim() || creating) return;
     setCreating(true);
     setError(null);
+    setDuplicate(null);
     try {
       const res = await fetch("/api/leads", {
         method: "POST",
@@ -291,9 +323,15 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
           source: form.source,
           industry: form.industry.trim() || undefined,
           notes: form.notes.trim() || undefined,
+          ...(allowDuplicate ? { allowDuplicate: true } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 409 && data.duplicateOf) {
+        // Same phone/email as an existing lead: let the user open it or knowingly create anyway.
+        setDuplicate(data.duplicateOf);
+        return;
+      }
       if (!res.ok) throw new Error(data.error ?? "Failed to create lead");
       setCreateOpen(false);
       setForm({
@@ -371,12 +409,14 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <Input
             className="pl-9"
+            aria-label="Search leads"
             placeholder="Search leads, company, phone…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <select
+          aria-label="Filter by stage"
           className="h-9 border border-border bg-surface px-3 text-sm"
           value={stageFilter}
           onChange={(e) => setStageFilter(e.target.value)}
@@ -389,6 +429,7 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
           ))}
         </select>
         <select
+          aria-label="Filter by source"
           className="h-9 border border-border bg-surface px-3 text-sm"
           value={sourceFilter}
           onChange={(e) => setSourceFilter(e.target.value)}
@@ -401,7 +442,7 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
           ))}
         </select>
         <div className="relative">
-          <Button type="button" variant="outline" size="sm" onClick={() => setColumnsOpen((o) => !o)}>
+          <Button type="button" variant="outline" size="sm" aria-expanded={columnsOpen} onClick={() => setColumnsOpen((o) => !o)}>
             <Columns3 className="h-4 w-4" />
             Columns
           </Button>
@@ -422,13 +463,18 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
             </div>
           ) : null}
         </div>
-        <Button type="button" variant="accent" size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4" />
-          New lead
-        </Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => void exportCsv()}>
-          Export CSV
-        </Button>
+        {canWrite ? (
+          <Button type="button" variant="accent" size="sm" onClick={() => { setDuplicate(null); setCreateOpen(true); }}>
+            <Plus className="h-4 w-4" />
+            New lead
+          </Button>
+        ) : null}
+        {canExport ? (
+          <Button type="button" variant="outline" size="sm" onClick={() => void exportCsv()}>
+            Export CSV
+          </Button>
+        ) : null}
+        {canImport ? (
         <label className="inline-flex h-8 cursor-pointer items-center border border-border px-3 text-xs">
           {importing ? "Importing…" : "Import CSV"}
           <input
@@ -443,16 +489,17 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
             }}
           />
         </label>
+        ) : null}
       </div>
 
       {importReport ? <p className="text-xs text-muted">{importReport}</p> : null}
 
       {error ? (
-        <div className="border border-danger/30 bg-red-50 px-3 py-2 text-sm text-danger">{error}</div>
+        <div role="alert" className="border border-danger/30 bg-red-50 px-3 py-2 text-sm text-danger">{error}</div>
       ) : null}
 
       <div className="overflow-x-auto border border-border bg-surface">
-        <table className="ops w-full min-w-[1200px] text-left">
+        <table className="ops w-full min-w-[860px] text-left">
           <thead className="border-b border-border bg-background text-[11px] text-muted">
             <tr>
               {visible.lead ? (
@@ -500,6 +547,8 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
                   <SortBtn label="Stage" column="stage" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 </th>
               ) : null}
+              {visible.status ? <th className="px-3 py-2">Status</th> : null}
+              {visible.why ? <th className="px-3 py-2">Why</th> : null}
               {visible.owner ? <th className="px-3 py-2">Owner</th> : null}
               {visible.lastActivity ? (
                 <th className="px-3 py-2">
@@ -525,14 +574,14 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
           <tbody className="divide-y divide-border">
             {loading ? (
               <tr>
-                <td colSpan={15} className="px-3 py-8 text-center text-muted">
+                <td colSpan={17} className="px-3 py-8 text-center text-muted">
                   Loading leads…
                 </td>
               </tr>
             ) : pageRows.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-3 py-8 text-center text-muted">
-                  No leads match these filters. Adjust search or create a lead.
+                <td colSpan={17} className="px-3 py-8 text-center text-muted">
+                  {leads.length === 0 ? (emptyMessage ?? "No leads yet. Import your leads or connect a lead source.") : "No leads match these filters. Adjust the search or filters."}
                 </td>
               </tr>
             ) : (
@@ -574,25 +623,47 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
                       <Badge tone={stageTone(lead.stage)}>{lead.stage}</Badge>
                     </td>
                   ) : null}
+                  {visible.status ? (
+                    <td className="px-3 py-2">
+                      <Badge tone={lead.state === "Needs Attention" ? "danger" : lead.state === "Cold" ? "warning" : lead.state === "Active" ? "success" : "neutral"}>
+                        {lead.state ?? "—"}
+                      </Badge>
+                    </td>
+                  ) : null}
+                  {visible.why ? (
+                    <td className="max-w-[260px] px-3 py-2 text-xs text-muted">
+                      {lead.why && lead.why.length > 0 ? (
+                        <span title={lead.why.join("; ")}>
+                          {lead.priorityLevel === "high" ? <strong className="text-foreground">High priority · </strong> : null}
+                          {lead.why[0]}
+                          {lead.why.length > 1 ? ` (+${lead.why.length - 1} more)` : ""}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  ) : null}
                   {visible.owner ? (
                     <td className="px-3 py-2 text-muted">{lead.owner?.name ?? "—"}</td>
                   ) : null}
                   {visible.lastActivity ? (
                     <td className="px-3 py-2 mono text-[11px] text-muted">
-                      {formatDateTimePK(lead.lastActivityAt)}
+                      {formatDateTime(lead.lastActivityAt)}
                     </td>
                   ) : null}
                   {visible.nextAction ? (
-                    <td className="px-3 py-2 text-xs text-muted">{lead.nextAction ?? "—"}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {lead.nextAction ? lead.nextAction : <span className="text-muted">No next action</span>}
+                    </td>
                   ) : null}
                   {visible.followUp ? (
                     <td className="px-3 py-2 mono text-[11px] text-muted">
-                      {formatDatePK(lead.followUpDue)}
+                      {formatDate(lead.followUpDue)}
                     </td>
                   ) : null}
                   {visible.created ? (
                     <td className="px-3 py-2 mono text-[11px] text-muted">
-                      {formatDatePK(lead.createdAt)}
+                      {formatDate(lead.createdAt)}
                     </td>
                   ) : null}
                   <td className="relative px-3 py-2">
@@ -613,14 +684,16 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
                         >
                           Open
                         </Link>
-                        <button
-                          type="button"
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-danger hover:bg-background"
-                          onClick={() => void softDelete(lead.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Soft delete
-                        </button>
+                        {canDelete ? (
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-danger hover:bg-background"
+                            onClick={() => void softDelete(lead.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Soft delete
+                          </button>
+                        ) : null}
                       </div>
                     ) : null}
                   </td>
@@ -748,6 +821,20 @@ export function LeadsTable({ initialLeads }: { initialLeads?: LeadRow[] }) {
                   onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                 />
               </div>
+              {duplicate ? (
+                <div role="alert" className="rounded-[12px] border border-border bg-background p-3 text-sm">
+                  <p>
+                    A lead with this phone number or email already exists:{" "}
+                    <Link href={`/leads/${duplicate.id}`} className="font-medium text-brand underline">
+                      {duplicate.name || "open it"}
+                    </Link>
+                    .
+                  </p>
+                  <Button type="button" variant="outline" size="sm" className="mt-2" disabled={creating} onClick={() => void createLead(null, true)}>
+                    Create anyway
+                  </Button>
+                </div>
+              ) : null}
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
                   Cancel
@@ -770,7 +857,7 @@ function leadValueHint(rows: LeadRow[]) {
   if (!total) return null;
   return (
     <span className={cn("ml-2 text-xs")}>
-      · page est. {formatCurrency(total)}
+      · page est. {formatMoney(total)}
     </span>
   );
 }

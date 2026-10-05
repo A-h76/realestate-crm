@@ -1,5 +1,5 @@
 import { jsonError, jsonOk, requirePermission } from "@/lib/api";
-import { getWhatsAppProvider } from "@/lib/providers/whatsapp";
+import { getWhatsAppProvider, whatsappStatus } from "@/lib/providers/whatsapp";
 import { measuredRoute } from "@/lib/perf";
 
 
@@ -14,6 +14,7 @@ export const GET = measuredRoute("GET /api/whatsapp/conversations/:id", async (_
 
     return jsonOk({
       ...thread,
+      mode: whatsappStatus().mode,
       notice: provider.isDemo
         ? "Demo WhatsApp thread — messages are simulated locally."
         : undefined,

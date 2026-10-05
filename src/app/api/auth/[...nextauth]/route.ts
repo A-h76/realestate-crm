@@ -1,6 +1,6 @@
 import { handlers } from "@/lib/auth";
 import { jsonError } from "@/lib/api";
-import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { enforceRateLimit, loginRateLimits } from "@/lib/rate-limit";
 import { clientIp, identifierKey } from "@/lib/security/request";
 import { NextRequest } from "next/server";
 import { measuredRoute } from "@/lib/perf";
@@ -19,8 +19,8 @@ export const POST = measuredRoute(
     try {
       const nextRequest = request as NextRequest;
       const url = new URL(nextRequest.url);
-      const isCredentials =
-        url.pathname.includes("/callback/credentials") || url.pathname.endsWith("/signin");
+      // Any sign-in/callback POST can carry credentials; limit them all.
+      const isCredentials = /\/api\/auth\/(signin|callback)(\/|$)/.test(url.pathname);
       if (!isCredentials) {
         return nextAuthPost(nextRequest);
       }
@@ -39,10 +39,9 @@ export const POST = measuredRoute(
         email = identifierKey(new URLSearchParams(rawBody).get("email") ?? undefined);
       }
 
-      await enforceRateLimit({
-        key: `auth:login:${clientIp(nextRequest)}:${email}`,
-        ...RATE_LIMITS.login,
-      });
+      for (const spec of loginRateLimits(clientIp(nextRequest), email)) {
+        await enforceRateLimit(spec);
+      }
 
       const forwarded = new NextRequest(nextRequest.url, {
         method: "POST",

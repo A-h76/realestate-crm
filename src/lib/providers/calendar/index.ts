@@ -1,15 +1,12 @@
 import { DemoCalendarProvider } from "./demo";
-import { GoogleCalendarProvider } from "./google";
 import type { CalendarProvider } from "./types";
 
+/**
+ * INTG-012: the calendar is internal — events live only in the CRM database.
+ * No external calendar provider (Google or otherwise) is implemented; add a
+ * real provider here only once its OAuth/sync design is approved.
+ */
 export function getCalendarProvider(): CalendarProvider {
-  const googleEnabled = process.env.GOOGLE_CALENDAR_ENABLED === "true";
-  const hasCreds = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-
-  if (googleEnabled && hasCreds) {
-    return new GoogleCalendarProvider();
-  }
-
   return new DemoCalendarProvider();
 }
 

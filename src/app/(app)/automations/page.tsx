@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatDateTimePK } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 
 type Automation = {
   id: string;
@@ -50,12 +50,18 @@ export default function AutomationsPage() {
   }, [load]);
 
   async function toggle(item: Automation, field: "paused" | "enabled") {
-    await fetch("/api/automations", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: item.id, [field]: !item[field] }),
-    });
-    await load();
+    setError(null);
+    try {
+      const res = await fetch("/api/automations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, [field]: !item[field] }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Could not update the automation");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update the automation");
+    }
   }
 
   return (
@@ -63,9 +69,21 @@ export default function AutomationsPage() {
       <PageHeader
         eyebrow="Human control"
         title="Automations"
-        description="Deterministic flows with pause, resume, and a full execution log. AI never sends outbound messages."
+        description="Fixed rules built into the product, with pause, resume and a full execution log. Rules cannot be created or edited here."
       />
-      {error ? <p className="text-sm text-danger">{error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-danger">{error}</p> : null}
+      <div className="border border-border bg-surface p-4 text-sm text-muted">
+        <p>Pause and Resume apply to the rules listed below. Two things are not controlled from this page:</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li>
+            Automatic WhatsApp replies are not a rule. They stop for a lead only when a team member takes over that conversation.
+          </li>
+          <li>
+            Inactive-lead follow-ups run on a schedule only if the scheduled job has been set up for this deployment; the
+            default rule creates a task and does not send a message.
+          </li>
+        </ul>
+      </div>
 
       <section className="divide-y divide-border">
         {items.map((item) => (
@@ -119,7 +137,7 @@ export default function AutomationsPage() {
                     className="cursor-pointer hover:bg-surface"
                     onClick={() => setSelected(row)}
                   >
-                    <td className="mono py-3 text-[11px]">{formatDateTimePK(row.createdAt)}</td>
+                    <td className="mono py-3 text-[11px]">{formatDateTime(row.createdAt)}</td>
                     <td className="py-3">{row.automation.name}</td>
                     <td className="py-3 text-muted">{row.action}</td>
                     <td className="py-3">{row.status}</td>

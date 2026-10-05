@@ -5,7 +5,8 @@ function canonicalSource(source: string) {
   const key = source.trim();
   if (key === "WhatsApp" || key === "WHATSAPP_INBOUND") return "WHATSAPP_INBOUND";
   if (key === "Facebook/Instagram" || key === "FACEBOOK_ADS") return "FACEBOOK_ADS";
-  if (key === "Zameen.com" || key === "ZAMEEN") return "ZAMEEN";
+  if (key === "Zillow" || key === "ZILLOW") return "ZILLOW";
+  if (key === "Realtor.com" || key === "REALTOR_COM") return "REALTOR_COM";
   if (key === "Referral" || key === "REFERRAL") return "REFERRAL";
   return key;
 }
@@ -32,8 +33,10 @@ export function SourceName({
           <span className="source-instagram">Instagram</span>
         </span>
       );
-    case "ZAMEEN":
-      return <span className={cn("font-bold text-black", className)}>Zameen.com</span>;
+    case "ZILLOW":
+      return <span className={cn("font-bold text-[#006AFF]", className)}>Zillow</span>;
+    case "REALTOR_COM":
+      return <span className={cn("font-bold text-[#D92228]", className)}>Realtor.com</span>;
     case "REFERRAL":
       return <span className={cn("font-medium text-danger", className)}>Referral</span>;
     default:

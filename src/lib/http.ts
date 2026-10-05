@@ -8,7 +8,6 @@ export const FETCH_TIMEOUTS_MS = {
   upstash: 800,
   openMeteo: 2500,
   whatsappGraph: 8000,
-  googleCalendar: 8000,
   default: 5000,
 } as const;
 

@@ -45,6 +45,9 @@ export class DemoWhatsAppProvider implements WhatsAppProvider {
         provider: "demo",
         metadata: {
           demoNotice: "Demo WhatsApp draft saved. Not sent to any recipient.",
+          // The caller's metadata (e.g. the conversation decision and awaitingApproval) was
+          // previously dropped here, so a draft carried no trace of why it was drafted.
+          ...input.metadata,
         },
       },
     });

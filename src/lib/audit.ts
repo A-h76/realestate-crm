@@ -1,15 +1,20 @@
 import type { AuditAction, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
-export async function writeAudit(input: {
-  workspaceId: string;
-  actorId?: string | null;
-  action: AuditAction;
-  entity: string;
-  entityId: string;
-  metadata?: Prisma.InputJsonValue;
-}) {
-  return prisma.auditLog.create({
+type AuditDb = Pick<typeof prisma, "auditLog">;
+
+export async function writeAudit(
+  input: {
+    workspaceId: string;
+    actorId?: string | null;
+    action: AuditAction;
+    entity: string;
+    entityId: string;
+    metadata?: Prisma.InputJsonValue;
+  },
+  db: AuditDb = prisma,
+) {
+  return db.auditLog.create({
     data: {
       workspaceId: input.workspaceId,
       actorId: input.actorId ?? null,

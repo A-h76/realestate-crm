@@ -3,10 +3,11 @@ import { ApiError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { writeAudit } from "@/lib/audit";
-import { normalizePkPhone } from "@/lib/format";
+import { isOptInMessage, isOptOutMessage, recordConsent } from "@/lib/messaging/consent";
 import { verifyHubSignature256 } from "@/lib/security/hmac";
 import { measureExecution } from "@/lib/perf";
-import { createLead } from "@/lib/leads/create-lead";
+import { createLeadRecord, runLeadCreatedAutomations } from "@/lib/leads/create-lead";
+import { canonicalPhone, duplicateWhere, lockLeadIdentities } from "@/lib/leads/identity";
 import {
   applyRequirementUpdate,
   extractRequirement,
@@ -73,6 +74,20 @@ const META_STATUS_MAP: Record<string, WhatsAppMessageStatus> = {
   failed: "FAILED",
 };
 
+/**
+ * Statuses a message may move FROM, per target. Meta delivers status callbacks out of order and more than once, so a
+ * late "delivered" must not overwrite "read", and a replayed "sent" must not undo "delivered". Only forward moves apply;
+ * "failed" applies only to a message that is not yet delivered.
+ */
+const STATUS_MOVES_FROM: Record<WhatsAppMessageStatus, WhatsAppMessageStatus[]> = {
+  DRAFT: [],
+  QUEUED: [],
+  SENT: ["QUEUED"],
+  DELIVERED: ["QUEUED", "SENT"],
+  READ: ["QUEUED", "SENT", "DELIVERED"],
+  FAILED: ["QUEUED", "SENT"],
+};
+
 /** Meta delivery-status webhook (sent/delivered/read/failed) for an outbound message we sent. */
 async function applyStatusUpdate(workspaceId: string, status: { id?: string; status?: string }) {
   if (!status.id || !status.status) return;
@@ -80,7 +95,13 @@ async function applyStatusUpdate(workspaceId: string, status: { id?: string; sta
   if (!mapped) return;
   await measureExecution("webhook.status", () =>
     prisma.whatsAppMessage.updateMany({
-      where: { workspaceId, provider: "whatsapp-business", externalId: status.id, direction: "OUTBOUND" },
+      where: {
+        workspaceId,
+        provider: "whatsapp-business",
+        externalId: status.id,
+        direction: "OUTBOUND",
+        status: { in: STATUS_MOVES_FROM[mapped] },
+      },
       data: { status: mapped },
     }),
   );
@@ -101,15 +122,42 @@ export async function storeInboundMessage(input: {
   /** false for non-text message types: skip requirement extraction and handoff detection on the placeholder body. */
   extractable: boolean;
   metadata?: Record<string, unknown>;
+  /**
+   * Demo-only (INTG-011): runs the same lead/extraction/handoff/conversation path for a simulated customer message.
+   * Rows are tagged provider "demo", the event is claimed under a separate provider key so it can never collide with
+   * a real Meta event id, and the audit row records the acting user. The caller must have verified Demo Mode and
+   * that the active WhatsApp provider is the demo one (so the automatic reply cannot reach a real customer).
+   */
+  simulation?: { actorId: string };
 }): Promise<"created" | "duplicate"> {
-  const [existingLead, contact] = await measureExecution("webhook.lookups", () =>
-    Promise.all([
-      prisma.lead.findFirst({
-        where: {
-          workspaceId: input.workspaceId,
-          deletedAt: null,
-          OR: [{ whatsappNumber: input.phone }, { phone: input.phone }],
-        },
+  const sim = input.simulation;
+  const extracted = input.extractable ? extractRequirement(input.body) : {};
+  const canonical = canonicalPhone(input.phone);
+  const [firstName, ...rest] = (input.profileName?.trim() || `WhatsApp Lead ${input.phone.slice(-4)}`).split(/\s+/);
+
+  /**
+   * DATA-001/002: one transaction does, in order, (1) take the per-phone lock, (2) claim the webhook
+   * event, (3) find-or-create the lead, (4) store the message. Concurrent deliveries for the same
+   * number queue on the lock, so exactly one creates the lead and the rest attach to it; a replayed
+   * event is rejected at step 2 *before* any lead is created (previously a concurrent replay could
+   * leave an orphan duplicate lead behind).
+   */
+  const persisted = await measureExecution("webhook.persist", () =>
+    prisma.$transaction(async (tx) => {
+      await lockLeadIdentities(tx, input.workspaceId, [`p:${canonical ?? input.phone}`]);
+
+      const claimed = await tx.webhookEvent.createMany({
+        data: [{ provider: sim ? "whatsapp-simulated" : "whatsapp", externalEventId: input.externalId, workspaceId: input.workspaceId }],
+        skipDuplicates: true,
+      });
+      if (claimed.count === 0) return null;
+
+      const phoneWhere = canonical
+        ? duplicateWhere(input.workspaceId, { phone: canonical })!
+        : { workspaceId: input.workspaceId, deletedAt: null, OR: [{ whatsappNumber: input.phone }, { phone: input.phone }] };
+      const existingLead = await tx.lead.findFirst({
+        where: phoneWhere,
+        orderBy: { createdAt: "asc" },
         select: {
           id: true,
           ownerId: true,
@@ -124,142 +172,165 @@ export async function storeInboundMessage(input: {
           sizeUnitPref: true,
           bedroomPref: true,
         },
-      }),
-      prisma.contact.findFirst({
+      });
+      const contact = await tx.contact.findFirst({
         where: {
           workspaceId: input.workspaceId,
           deletedAt: null,
           OR: [{ whatsappNumber: input.phone }, { phone: input.phone }],
         },
         select: { id: true },
-      }),
-    ]),
-  );
+      });
 
-  const extracted = input.extractable ? extractRequirement(input.body) : {};
-  let lead: { id: string; ownerId: string | null };
-  let previousMessage: string | null = null;
+      let lead: { id: string; ownerId: string | null };
+      let isNewLead = false;
+      let previousMessage: string | null = null;
+      if (existingLead) {
+        lead = existingLead;
+        previousMessage =
+          (
+            await tx.whatsAppMessage.findFirst({
+              where: { workspaceId: input.workspaceId, leadId: existingLead.id, direction: "INBOUND" },
+              orderBy: { sentAt: "desc" },
+              select: { body: true },
+            })
+          )?.body ?? null;
+      } else {
+        lead = await createLeadRecord(tx, input.workspaceId, null, {
+          firstName,
+          lastName: rest.join(" ") || null,
+          phone: input.phone,
+          whatsappNumber: input.phone,
+          source: "WHATSAPP_INBOUND",
+          ...extracted,
+        });
+        isNewLead = true;
+      }
 
-  if (existingLead) {
-    lead = existingLead;
-    const [, prevMessage] = await Promise.all([
-      applyRequirementUpdate(
-        input.workspaceId,
-        existingLead.id,
-        existingLead as unknown as RequirementSnapshot,
-        extracted,
-      ),
-      prisma.whatsAppMessage.findFirst({
-        where: { workspaceId: input.workspaceId, leadId: existingLead.id, direction: "INBOUND" },
-        orderBy: { sentAt: "desc" },
-        select: { body: true },
-      }),
-    ]);
-    previousMessage = prevMessage?.body ?? null;
-  } else {
-    const [firstName, ...rest] = (
-      input.profileName?.trim() || `WhatsApp Lead ${input.phone.slice(-4)}`
-    ).split(/\s+/);
-    const created = await measureExecution("webhook.createLead", () =>
-      createLead(input.workspaceId, null, {
-        firstName,
-        lastName: rest.join(" ") || null,
-        phone: input.phone,
-        whatsappNumber: input.phone,
-        source: "WHATSAPP_INBOUND",
-        ...extracted,
-      }),
-    );
-    lead = created;
-  }
+      const row = await tx.whatsAppMessage.create({
+        data: {
+          workspaceId: input.workspaceId,
+          conversationId: `lead:${lead.id}`,
+          direction: "INBOUND",
+          body: input.body,
+          status: "DELIVERED",
+          leadId: lead.id,
+          contactId: contact?.id,
+          provider: sim ? "demo" : "whatsapp-business",
+          externalId: input.externalId,
+          metadata: sim
+            ? { simulated: true, demoNotice: "Simulated inbound Demo WhatsApp message.", ...input.metadata }
+            : { webhook: true, ...input.metadata },
+        },
+        select: { id: true },
+      });
+      return { lead, existingLead, isNewLead, previousMessage, rowId: row.id };
+    }),
+  ).catch((error: unknown) => {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return null;
+    throw error;
+  });
 
+  if (!persisted) return "duplicate";
+  const { lead, existingLead, isNewLead, previousMessage, rowId } = persisted;
   const conversationId = `lead:${lead.id}`;
 
-  try {
-    const row = await measureExecution("webhook.persist", () =>
-      prisma.$transaction(async (tx) => {
-        await tx.webhookEvent.create({
-          data: {
-            provider: "whatsapp",
-            externalEventId: input.externalId,
-            workspaceId: input.workspaceId,
-          },
-        });
-        return tx.whatsAppMessage.create({
-          data: {
-            workspaceId: input.workspaceId,
-            conversationId,
-            direction: "INBOUND",
-            body: input.body,
-            status: "DELIVERED",
-            leadId: lead?.id,
-            contactId: contact?.id,
-            provider: "whatsapp-business",
-            externalId: input.externalId,
-            metadata: { webhook: true, ...input.metadata },
-          },
-          select: { id: true },
-        });
+  if (isNewLead) {
+    await runLeadCreatedAutomations(input.workspaceId, null, lead.id);
+  } else if (existingLead) {
+    await applyRequirementUpdate(
+      input.workspaceId,
+      existingLead.id,
+      existingLead as unknown as RequirementSnapshot,
+      extracted,
+    );
+  }
+
+  await writeAudit({
+    workspaceId: input.workspaceId,
+    actorId: sim?.actorId,
+    action: "WHATSAPP_MESSAGE_LOGGED",
+    entity: "WhatsAppMessage",
+    entityId: rowId,
+    metadata: sim ? { direction: "INBOUND", demo: true, simulated: true } : { direction: "INBOUND", webhook: true },
+  });
+
+  if (lead.ownerId) {
+    await measureExecution("webhook.notify", () =>
+      notify({
+        workspaceId: input.workspaceId,
+        userId: lead.ownerId!,
+        type: "WHATSAPP_RECEIVED",
+        title: "WhatsApp message received",
+        body: "New inbound WhatsApp message",
+        href: `/leads/${lead.id}`,
+        entityType: "Lead",
+        entityId: lead.id,
       }),
     );
+  }
 
-    await writeAudit({
+  // An opt-out is honored before anything else can reply (US-32). It is recorded against the
+  // canonical number, so the suppression holds however the number is spelled later, and the
+  // conversational engine is not run at all for this message — replying "you're unsubscribed"
+  // would itself be a message to someone who just asked us to stop.
+  if (isOptOutMessage(input.body)) {
+    await recordConsent({
       workspaceId: input.workspaceId,
-      action: "WHATSAPP_MESSAGE_LOGGED",
-      entity: "WhatsAppMessage",
-      entityId: row.id,
-      metadata: { direction: "INBOUND", webhook: true },
+      channel: "WHATSAPP",
+      rawAddress: input.phone,
+      status: "REVOKED",
+      source: "inbound_stop",
+      evidence: `whatsapp message ${rowId}`,
+      leadId: lead.id,
+      actorId: sim?.actorId ?? null,
     });
+    return "created";
+  }
 
-    if (lead?.ownerId) {
-      await measureExecution("webhook.notify", () =>
-        notify({
+  // An explicit opt-in keyword from the customer is recorded as consent with the message as
+  // its evidence; the turn then continues normally.
+  if (isOptInMessage(input.body)) {
+    await recordConsent({
+      workspaceId: input.workspaceId,
+      channel: "WHATSAPP",
+      rawAddress: input.phone,
+      status: "GRANTED",
+      source: "inbound_optin_keyword",
+      evidence: `whatsapp message ${rowId}`,
+      leadId: lead.id,
+      actorId: sim?.actorId ?? null,
+    });
+  }
+
+  if (input.extractable) {
+    const detection = detectHandoff(input.body, { previousMessage });
+    if (detection.shouldHandoff) {
+      await measureExecution("webhook.handoff", () =>
+        triggerHandoff({
           workspaceId: input.workspaceId,
-          userId: lead.ownerId!,
-          type: "WHATSAPP_RECEIVED",
-          title: "WhatsApp message received",
-          body: "New inbound WhatsApp message",
-          href: `/leads/${lead.id}`,
-          entityType: "Lead",
-          entityId: lead.id,
+          leadId: lead.id,
+          detection,
+          triggerMessage: input.body,
+          triggerMessageId: rowId,
+        }),
+      );
+    } else {
+      // Only a non-handoff customer message ever reaches the automatic
+      // conversational reply — never re-entered by our own outbound sends
+      // or by Meta status callbacks, which are handled separately above.
+      await measureExecution("webhook.conversation", () =>
+        runConversationTurn({
+          workspaceId: input.workspaceId,
+          leadId: lead.id,
+          conversationId,
+          messageId: rowId,
+          message: input.body,
         }),
       );
     }
-
-    if (input.extractable) {
-      const detection = detectHandoff(input.body, { previousMessage });
-      if (detection.shouldHandoff) {
-        await measureExecution("webhook.handoff", () =>
-          triggerHandoff({
-            workspaceId: input.workspaceId,
-            leadId: lead.id,
-            detection,
-            triggerMessage: input.body,
-            triggerMessageId: row.id,
-          }),
-        );
-      } else {
-        // Only a non-handoff customer message ever reaches the automatic
-        // conversational reply — never re-entered by our own outbound sends
-        // or by Meta status callbacks, which are handled separately above.
-        await measureExecution("webhook.conversation", () =>
-          runConversationTurn({
-            workspaceId: input.workspaceId,
-            leadId: lead.id,
-            conversationId,
-            messageId: row.id,
-            message: input.body,
-          }),
-        );
-      }
-    }
-    return "created";
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return "duplicate";
-    }
-    throw error;
   }
+  return "created";
 }
 
 export async function processWhatsAppWebhook(
@@ -314,7 +385,10 @@ export async function processWhatsAppWebhook(
       const extractable = Boolean(text);
       const body = extractable ? text! : `[Unsupported WhatsApp message: ${msg.type ?? "unknown"}]`;
 
-      const phone = normalizePkPhone(msg.from) ?? `+${msg.from.replace(/[^\d]/g, "")}`;
+      // Meta sends `from` as full international digits without the plus. Canonicalize for
+      // identity, but fall back to the raw +digits form rather than dropping a real inbound
+      // message: threading an unparseable number is better than losing the customer's reply.
+      const phone = canonicalPhone(`+${msg.from.replace(/[^\d]/g, "")}`) ?? `+${msg.from.replace(/[^\d]/g, "")}`;
       const result = await storeInboundMessage({
         workspaceId,
         phone,

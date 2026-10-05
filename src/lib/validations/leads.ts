@@ -49,7 +49,10 @@ export const leadCreateSchema = z.object({
   nextAction: z.string().trim().optional().nullable(),
 });
 
-export const leadUpdateSchema = leadCreateSchema.partial();
+/** Manual create/update: `allowDuplicate` overrides the duplicate-lead check (DATA-001). */
+export const leadCreateRequestSchema = leadCreateSchema.extend({ allowDuplicate: z.boolean().optional() });
+
+export const leadUpdateSchema = leadCreateSchema.partial().extend({ allowDuplicate: z.boolean().optional() });
 
 export const leadListQuerySchema = paginationSchema.extend({
   stage: leadStageEnum.optional(),

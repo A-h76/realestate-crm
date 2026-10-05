@@ -25,11 +25,14 @@ export function HandoffBanner({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className={inProgress ? "text-[12px] font-semibold uppercase tracking-[0.08em] text-warning" : "text-[12px] font-semibold uppercase tracking-[0.08em] text-danger"}>
-            {inProgress ? "Handoff in progress" : "Human handoff required"}
+            {inProgress ? "Transfer in progress" : "Transfer to agent required"}
           </div>
           <p className="mt-1 text-sm font-medium">{handoff.reasonLabel}</p>
           {handoff.actionLabel ? (
             <p className="mt-0.5 text-[12px] text-muted">Suggested action: {handoff.actionLabel}</p>
+          ) : null}
+          {!inProgress && !isMine && ownerName ? (
+            <p className="mt-0.5 text-[12px] text-muted">Assigned to {ownerName}.</p>
           ) : null}
           {inProgress ? (
             <p className="mt-0.5 text-[12px] text-muted">
@@ -37,7 +40,7 @@ export function HandoffBanner({
             </p>
           ) : null}
         </div>
-        {!inProgress ? <TakeOverButton leadId={leadId} /> : null}
+        {!inProgress ? <TakeOverButton leadId={leadId} ownedByOther={!isMine && ownerName != null} /> : null}
       </div>
     </div>
   );

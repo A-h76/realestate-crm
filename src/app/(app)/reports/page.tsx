@@ -12,8 +12,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
-import { formatCurrency } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { RangeChips } from "@/components/editorial";
 
 type Insights = {
@@ -24,6 +25,8 @@ type Insights = {
   stageConversion: Array<{ stage: string; count: number }>;
   pipelineAging: { d0_7: number; d8_14: number; d15_30: number; d31_60: number; d60p: number };
   whatsappResponseRate: number;
+  /** Conversations where we sent the first message: the denominator of whatsappResponseRate. */
+  whatsappOutboundThreads?: number;
   activityVolume: number;
   totals: { leads: number; won: number; open: number };
   propertyMatchConversion: number;
@@ -101,8 +104,13 @@ export default function ReportsPage() {
     <div className="page-in space-y-10 p-6 md:p-10">
       <PageHeader
         eyebrow="Reports"
-        title="Revenue and conversion"
-        description="Sales, pipeline, sources, WhatsApp, and property-match performance from live queries."
+        title="Business performance"
+        description="Closed deals, lead sources and pipeline age, counted from live records."
+        actions={
+          <Link href="/reports/overview" className="text-[13px] font-medium text-accent-text hover:underline">
+            Business overview →
+          </Link>
+        }
       />
       <RangeChips options={RANGES} value={range} onSelect={setRange} />
       {error ? <p className="text-sm text-danger">{error}</p> : null}
@@ -117,11 +125,20 @@ export default function ReportsPage() {
             </div>
             <div>
               <div className="section-kicker">Average deal</div>
-              <div className="title money mt-2">{formatCurrency(data.averageDealSize)}</div>
+              <div className="title money mt-2">{formatMoney(data.averageDealSize)}</div>
             </div>
             <div>
-              <div className="section-kicker">WhatsApp reply</div>
-              <div className="title mt-2">{Math.round(data.whatsappResponseRate * 100)}%</div>
+              <div className="section-kicker">Leads who replied</div>
+              {data.whatsappOutboundThreads === 0 ? (
+                <div className="mt-2 text-sm text-muted">Not enough activity data yet</div>
+              ) : (
+                <>
+                  <div className="title mt-2">{Math.round(data.whatsappResponseRate * 100)}%</div>
+                  {data.whatsappOutboundThreads != null ? (
+                    <div className="meta mt-1">of {data.whatsappOutboundThreads} conversations we started</div>
+                  ) : null}
+                </>
+              )}
             </div>
           </section>
           <div className="hairline" />
@@ -163,8 +180,8 @@ export default function ReportsPage() {
             </div>
           </section>
           <p className="meta">
-            Property match conversion {Math.round(data.propertyMatchConversion * 100)}% · activity volume{" "}
-            {data.activityVolume} · cycle {Math.round(data.salesCycleDays)} days
+            Activity logged: {data.activityVolume}
+            {data.totals.won > 0 ? ` · average sales cycle ${Math.round(data.salesCycleDays)} days` : ""}
           </p>
         </>
       )}

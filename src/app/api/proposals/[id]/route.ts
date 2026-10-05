@@ -91,6 +91,7 @@ export const PATCH = measuredRoute("PATCH /api/proposals/:id", async (request: R
           proposalId: proposal.id,
           proposalNumber: proposal.proposalNumber,
         },
+        eventKey: `proposal-sent:${proposal.id}`,
       });
     } else if (becomingViewed) {
       await writeAudit({
@@ -109,6 +110,7 @@ export const PATCH = measuredRoute("PATCH /api/proposals/:id", async (request: R
         leadId: proposal.leadId,
         opportunityId: proposal.opportunityId,
         payload: { proposalId: proposal.id, proposalNumber: proposal.proposalNumber },
+        eventKey: `proposal-viewed:${proposal.id}`,
       });
     } else if (becomingAccepted) {
       await writeAudit({

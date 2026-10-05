@@ -9,7 +9,9 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import { resolve } from "node:path";
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
@@ -138,7 +140,7 @@ function csvRows(n: number, prefix: string) {
   const header = "firstName,email,phone,source";
   const rows = Array.from(
     { length: n },
-    (_, i) => `${prefix}${i},${prefix}${i}@perf.invalid,+92300888${String(i).padStart(4, "0")},WALK_IN`,
+    (_, i) => `${prefix}${i},${prefix}${i}@perf.invalid,+1312555${String(1000 + i).padStart(4, "0")},WALK_IN`,
   );
   return [header, ...rows].join("\n");
 }
@@ -384,10 +386,42 @@ async function ensureDemoHarnessAccount(password: string) {
   return { email, userId: user.id, workspaceId: workspace.id };
 }
 
+/**
+ * Who/what produced these numbers. Without this a latency figure is meaningless: a laptop with a local database says
+ * nothing about a Railway container. Contains no hostnames, credentials or customer data.
+ */
+function environmentStamp() {
+  let commit = "unknown";
+  try {
+    commit = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch { /* not a git checkout */ }
+  const dbUrl = process.env.DATABASE_URL ?? "";
+  const dbHost = (() => { try { return new URL(dbUrl).hostname; } catch { return ""; } })();
+  return {
+    kind: BASE.includes("127.0.0.1") || BASE.includes("localhost") ? "LOCAL (same machine as the database and the load generator)" : "REMOTE",
+    gitCommit: commit,
+    workingTreeClean: (() => { try { return execFileSync("git", ["status", "--porcelain"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() === ""; } catch { return null; } })(),
+    node: process.version,
+    os: `${os.type()} ${os.release()} ${os.arch()}`,
+    cpu: `${os.cpus()[0]?.model ?? "unknown"} x${os.cpus().length}`,
+    memoryGb: Math.round(os.totalmem() / 1e9),
+    database: ["localhost", "127.0.0.1", "::1"].includes(dbHost) ? "Postgres on the same machine" : "Postgres on another host (network latency included)",
+    appMode: "next start (production build), single instance",
+    limitations: [
+      "One machine, one run: not a production guarantee and not a load test.",
+      `Each endpoint: ${WARMUP} warm-up requests then ${RUNS} measured sequential requests, so p95 is effectively the slowest sample.`,
+      "Sequential single-user traffic: says nothing about concurrency, connection-pool limits or contention.",
+      "Dataset is the local demo workspace plus the isolated volume workspace described in datasetNote, not production data.",
+    ],
+  };
+}
+
 function writeResults() {
   const dest = resolve(process.cwd(), "scripts/perf-http-results.json");
   const out = {
     at: new Date().toISOString(),
+    environment: environmentStamp(),
+    percentiles: "stats.median is p50; stats.p95 is the 95th percentile of the measured samples (nearest-rank)",
     base: BASE,
     warmup: WARMUP,
     runs: RUNS,
@@ -538,7 +572,7 @@ async function main() {
     await measureEndpoint("GET", "/api/proposals?pageSize=20", { label: "/api/proposals" });
     await measureEndpoint("GET", "/api/notifications");
     await measureEndpoint("GET", "/api/dashboard");
-    await measureEndpoint("GET", "/api/search?q=dha");
+    await measureEndpoint("GET", "/api/search?q=logan");
     await measureEndpoint("GET", "/api/insights?range=30d");
     await measureEndpoint("GET", "/api/audit?pageSize=20", { label: "/api/audit" });
     await measureEndpoint("GET", "/api/pipeline/stages");

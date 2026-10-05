@@ -1,16 +1,15 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requireAppAccess } from "@/lib/app-access";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { formatDatePK } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 
 export default async function ContactsPage() {
-  const session = await auth();
-  if (!session?.user) return null;
+  const { workspaceId } = await requireAppAccess();
 
   const contacts = await prisma.contact.findMany({
-    where: { workspaceId: session.user.workspaceId, deletedAt: null },
+    where: { workspaceId: workspaceId, deletedAt: null },
     orderBy: { firstName: "asc" },
     include: { account: { select: { id: true, company: true } } },
   });
@@ -64,7 +63,7 @@ export default async function ContactsPage() {
                   <td className="px-3 py-2 text-muted">{c.phone ?? "—"}</td>
                   <td className="px-3 py-2 text-muted">{c.whatsappNumber ?? "—"}</td>
                   <td className="px-3 py-2 mono text-[11px] text-muted">
-                    {formatDatePK(c.createdAt)}
+                    {formatDate(c.createdAt)}
                   </td>
                 </tr>
               ))

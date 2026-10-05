@@ -1,11 +1,19 @@
 import { jsonError, jsonOk, requirePermission } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { isDemoMode } from "@/lib/demo-mode";
+import { getPipelineMetrics } from "@/lib/metrics/pipeline";
 import { measuredRoute } from "@/lib/perf";
 
 
 function startOfToday() {
   const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function startOfMonth() {
+  const d = new Date();
+  d.setDate(1);
   d.setHours(0, 0, 0, 0);
   return d;
 }
@@ -22,11 +30,6 @@ function daysAgo(n: number) {
   return d;
 }
 
-function toNumber(value: { toString(): string } | number | null | undefined): number {
-  if (value == null) return 0;
-  return typeof value === "number" ? value : Number(value.toString());
-}
-
 export const GET = measuredRoute("GET /api/dashboard", async (_request: Request) => {
   try {
     const { workspaceId } = await requirePermission("crm:read");
@@ -35,11 +38,9 @@ export const GET = measuredRoute("GET /api/dashboard", async (_request: Request)
     const weekAgo = daysAgo(7);
 
     const [
+      pipelineMetrics,
       newLeads,
       qualified,
-      openOpportunities,
-      openOpps,
-      wonStages,
       followUpsDue,
       overdueTasks,
       upcomingSiteVisits,
@@ -48,6 +49,7 @@ export const GET = measuredRoute("GET /api/dashboard", async (_request: Request)
       priorityTasks,
       overdueLeads,
     ] = await Promise.all([
+      getPipelineMetrics(workspaceId, { wonSince: startOfMonth() }),
       prisma.lead.count({
         where: {
           workspaceId,
@@ -58,29 +60,6 @@ export const GET = measuredRoute("GET /api/dashboard", async (_request: Request)
       }),
       prisma.lead.count({
         where: { workspaceId, deletedAt: null, stage: "QUALIFIED" },
-      }),
-      prisma.opportunity.count({
-        where: {
-          workspaceId,
-          deletedAt: null,
-          stage: { isWon: false, isLost: false },
-        },
-      }),
-      prisma.opportunity.findMany({
-        where: {
-          workspaceId,
-          deletedAt: null,
-          stage: { isWon: false, isLost: false },
-        },
-        select: { value: true, probability: true },
-      }),
-      prisma.opportunity.findMany({
-        where: {
-          workspaceId,
-          deletedAt: null,
-          stage: { isWon: true },
-        },
-        select: { value: true },
       }),
       prisma.task.count({
         where: {
@@ -170,13 +149,6 @@ export const GET = measuredRoute("GET /api/dashboard", async (_request: Request)
       }),
     ]);
 
-    const pipelineValue = openOpps.reduce((sum, o) => sum + toNumber(o.value), 0);
-    const weightedPipeline = openOpps.reduce(
-      (sum, o) => sum + toNumber(o.value) * (o.probability / 100),
-      0,
-    );
-    const wonRevenue = wonStages.reduce((sum, o) => sum + toNumber(o.value), 0);
-
     const priorityActions = [
       ...priorityTasks.map((task) => ({
         kind: "task" as const,
@@ -204,10 +176,10 @@ export const GET = measuredRoute("GET /api/dashboard", async (_request: Request)
       metrics: {
         newLeads,
         qualified,
-        openOpportunities,
-        pipelineValue,
-        weightedPipeline,
-        wonRevenue,
+        openOpportunities: pipelineMetrics.openCount,
+        pipelineValue: pipelineMetrics.pipelineValue,
+        weightedPipeline: pipelineMetrics.weightedPipeline,
+        wonRevenue: pipelineMetrics.wonRevenue,
         followUpsDue,
         overdue: overdueTasks + overdueLeads.length,
       },

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useCan } from "@/components/providers/permissions";
 
 const LEAD_STAGES = ["NEW", "CONTACTED", "QUALIFIED", "NURTURING", "CONVERTED", "LOST", "ARCHIVED"] as const;
 
@@ -12,6 +13,7 @@ const LEAD_STAGES = ["NEW", "CONTACTED", "QUALIFIED", "NURTURING", "CONVERTED", 
  * supported `stage`, including its audit trail and QUALIFIED automation).
  */
 export function LeadStageControl({ leadId, stage }: { leadId: string; stage: string }) {
+  const canWrite = useCan("crm:write");
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +44,8 @@ export function LeadStageControl({ leadId, stage }: { leadId: string; stage: str
         aria-label="Lead stage"
         className="h-7 border border-border bg-surface px-2 text-xs font-medium"
         value={stage}
-        disabled={pending}
+        disabled={pending || !canWrite}
+        title={canWrite ? undefined : "Your role is view-only"}
         onChange={(e) => void changeStage(e.target.value)}
       >
         {LEAD_STAGES.map((s) => (
@@ -51,7 +54,7 @@ export function LeadStageControl({ leadId, stage }: { leadId: string; stage: str
           </option>
         ))}
       </select>
-      {error ? <span className="text-[11px] text-danger">{error}</span> : null}
+      {error ? <span role="alert" className="text-[11px] text-danger">{error}</span> : null}
     </div>
   );
 }

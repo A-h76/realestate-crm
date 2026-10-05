@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -11,7 +10,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { LeadsSourceDonut, PipelineTrendChart, type SourceSlice, type TrendPoint } from "@/components/dashboard/charts";
-import { formatCompactPKR, formatCurrency } from "@/lib/format";
+import { formatCompactMoney, formatMoney } from "@/lib/format";
 import { initials } from "@/lib/dashboard-ui";
 import { SourceName } from "@/components/source-name";
 import { cn } from "@/lib/utils";
@@ -69,7 +68,6 @@ export type DashboardViewProps = {
   greeting: string;
   dateLabel: string;
   firstName: string;
-  temperatureSlot?: ReactNode;
   pipelineValue: number;
   weighted: number;
   pipelineDelta: number | null;
@@ -85,6 +83,8 @@ export type DashboardViewProps = {
   trend: TrendPoint[];
   sources: SourceSlice[];
   leadTotal: number;
+  /** "all" when this month has no leads and the donut falls back to all-time counts. */
+  sourcesScope: "month" | "all";
   actions: DashboardAction[];
   recentLeads: DashboardLeadRow[];
   recentOpps: DashboardOppRow[];
@@ -160,9 +160,9 @@ export function DashboardView(props: DashboardViewProps) {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="section-kicker">Sales operations</div>
-          <h1 className="title mt-1">Turn more leads into address.</h1>
+          <h1 className="title mt-1">Turn more leads into closings.</h1>
           <p className="mt-2 max-w-2xl text-[14px] text-muted">
-            Track leads, match properties, manage site visits and close deals — all in one place.
+            Track leads, match listings, manage showings and close deals — all in one place.
           </p>
         </div>
         <div className="text-right">
@@ -177,10 +177,6 @@ export function DashboardView(props: DashboardViewProps) {
           <div className="mt-1 text-[13px] font-medium">
             {props.greeting}, {props.firstName}.
           </div>
-          <div className="mt-1 text-[12px] text-muted">
-            Lahore, Pakistan
-            {props.temperatureSlot}
-          </div>
         </div>
       </header>
 
@@ -190,14 +186,14 @@ export function DashboardView(props: DashboardViewProps) {
             <div className="text-[12px] font-medium text-white/80">Pipeline Value</div>
             <BarChart3 className="h-4 w-4 text-white/70" />
           </div>
-          <div className="money mt-3 text-[20px] font-bold leading-tight">{formatCompactPKR(props.pipelineValue)}</div>
+          <div className="money mt-3 text-[20px] font-bold leading-tight">{formatCompactMoney(props.pipelineValue)}</div>
           <div className="mt-2">
             <Delta value={props.pipelineDelta} />
           </div>
         </div>
         <div className="rounded-[12px] bg-accent p-4 text-[#042f2e] shadow-[var(--shadow)]">
           <div className="text-[12px] font-medium text-[#042f2e]/70">Weighted Pipeline</div>
-          <div className="money mt-3 text-[20px] font-bold leading-tight">{formatCompactPKR(props.weighted)}</div>
+          <div className="money mt-3 text-[20px] font-bold leading-tight">{formatCompactMoney(props.weighted)}</div>
           <div className="mt-2 text-[12px]">
             {props.weightedDelta == null ? "No prior month" : `${props.weightedDelta >= 0 ? "+" : ""}${props.weightedDelta.toFixed(1)}% vs last month`}
           </div>
@@ -212,7 +208,7 @@ export function DashboardView(props: DashboardViewProps) {
         </div>
         <div className="card p-4">
           <div className="flex items-start justify-between text-[12px] text-muted">
-            Site Visits (This Week)
+            Showings (This Week)
             <CalendarDays className="h-4 w-4" />
           </div>
           <div className="mt-3 text-[22px] font-bold">{props.visitsThisWeek}</div>
@@ -231,7 +227,7 @@ export function DashboardView(props: DashboardViewProps) {
             Won (This Month)
             <Trophy className="h-4 w-4 text-warning" />
           </div>
-          <div className="money mt-3 text-[18px] font-bold leading-tight">{formatCompactPKR(props.wonThisMonth)}</div>
+          <div className="money mt-3 text-[18px] font-bold leading-tight">{formatCompactMoney(props.wonThisMonth)}</div>
           <div className="mt-2 text-[12px] text-muted">{props.wonDealsThisMonth} deals</div>
         </div>
       </section>
@@ -245,21 +241,30 @@ export function DashboardView(props: DashboardViewProps) {
               <span className="rounded-full bg-background px-2 py-1">All sources</span>
             </div>
           </div>
-          <div className="money text-[22px] font-bold">{formatCurrency(props.pipelineValue)}</div>
+          <div className="money text-[22px] font-bold">{formatMoney(props.pipelineValue)}</div>
+          <div className="text-[12px] text-muted">Open pipeline value</div>
           <div className="mt-1 text-[12px] text-muted">
             {props.pipelineDelta == null
-              ? "Opened this month vs last month unavailable"
-              : `${props.pipelineDelta >= 0 ? "+" : ""}${props.pipelineDelta.toFixed(1)}% vs previous period`}
+              ? "Deal value opened this month: no opportunities opened last month to compare"
+              : `Deal value opened this month: ${props.pipelineDelta >= 0 ? "+" : ""}${props.pipelineDelta.toFixed(1)}% vs last month`}
           </div>
           <div className="mt-4 h-[208px] w-full">
-            <PipelineTrendChart data={props.trend} />
+            {props.trend.every((t) => t.pipeline === 0 && t.weighted === 0) ? (
+              <p className="flex h-full items-center justify-center text-sm text-muted">
+                No opportunities were opened in the last 6 months.
+              </p>
+            ) : (
+              <PipelineTrendChart data={props.trend} />
+            )}
           </div>
         </Card>
 
         <Card>
           <div className="mb-1 flex items-center justify-between">
             <h2 className="text-[16px] font-semibold">Leads by Source</h2>
-            <span className="rounded-full bg-background px-2 py-1 text-[11px] text-muted">This Month</span>
+            <span className="rounded-full bg-background px-2 py-1 text-[11px] text-muted">
+              {props.sourcesScope === "month" ? "This Month" : "All time (none this month)"}
+            </span>
           </div>
           <div className="h-[200px] w-full">
             <LeadsSourceDonut data={props.sources} total={props.leadTotal} />
@@ -332,6 +337,13 @@ export function DashboardView(props: DashboardViewProps) {
               </tr>
             </thead>
             <tbody>
+              {props.recentLeads.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-6 text-sm text-muted">
+                    No leads yet. New leads from WhatsApp, imports or manual entry appear here.
+                  </td>
+                </tr>
+              ) : null}
               {props.recentLeads.map((lead) => (
                 <tr key={lead.id} className="border-t border-border">
                   <td className="py-3">
@@ -381,6 +393,13 @@ export function DashboardView(props: DashboardViewProps) {
               </tr>
             </thead>
             <tbody>
+              {props.recentOpps.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-6 text-sm text-muted">
+                    No opportunities yet.
+                  </td>
+                </tr>
+              ) : null}
               {props.recentOpps.map((opp) => (
                 <tr key={opp.id} className="border-t border-border">
                   <td className="py-3">
@@ -388,7 +407,7 @@ export function DashboardView(props: DashboardViewProps) {
                       {opp.name}
                     </Link>
                   </td>
-                  <td className="money py-3">{formatCurrency(opp.value)}</td>
+                  <td className="money py-3">{formatMoney(opp.value)}</td>
                   <td className="py-3">
                     <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", stageTone(opp.stage, opp.won))}>
                       {opp.stage}
@@ -403,14 +422,14 @@ export function DashboardView(props: DashboardViewProps) {
 
         <Card>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[16px] font-semibold">Upcoming Site Visits</h2>
+            <h2 className="text-[16px] font-semibold">Upcoming Showings</h2>
             <Link href="/calendar" className="text-[12px] font-medium text-brand">
               View all
             </Link>
           </div>
           <div className="space-y-3">
             {props.visits.length === 0 ? (
-              <p className="text-sm text-muted">No site visits on the calendar.</p>
+              <p className="text-sm text-muted">No showings on the calendar.</p>
             ) : (
               props.visits.map((visit) => (
                 <div key={visit.id} className="flex gap-3">
@@ -455,7 +474,7 @@ export function DashboardView(props: DashboardViewProps) {
               <div className="p-3">
                 <div className="font-semibold">{property.title}</div>
                 <div className="text-[12px] text-muted">{property.area}</div>
-                <div className="money mt-1 text-[16px] font-bold">{formatCurrency(property.price)}</div>
+                <div className="money mt-1 text-[16px] font-bold">{formatMoney(property.price)}</div>
                 <div className="mt-1 text-[12px] text-muted">
                   {property.beds ?? "—"} Beds · {property.baths ?? "—"} Baths · {property.size}
                 </div>

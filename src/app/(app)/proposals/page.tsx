@@ -1,12 +1,10 @@
-import { auth } from "@/lib/auth";
+import { requireAppAccess } from "@/lib/app-access";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
 import { ProposalsClient } from "./proposals-client";
 
 export default async function ProposalsPage() {
-  const session = await auth();
-  if (!session?.user) return null;
-  const workspaceId = session.user.workspaceId;
+  const { workspaceId } = await requireAppAccess();
 
   const [proposals, opportunities, properties, leads] = await Promise.all([
     prisma.proposal.findMany({

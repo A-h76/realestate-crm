@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import { requireAppAccess } from "@/lib/app-access";
 import { AppShell } from "@/components/layout/app-shell";
+import { PermissionsProvider } from "@/components/providers/permissions";
+import { permissionsForRole } from "@/lib/authz";
 import { getCalendarProvider } from "@/lib/providers/calendar";
-import { getWhatsAppProvider } from "@/lib/providers/whatsapp";
+import { whatsappStatus } from "@/lib/providers/whatsapp";
 
 export const dynamic = "force-dynamic";
 
@@ -13,20 +15,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const calendar = getCalendarProvider();
-  const whatsapp = getWhatsAppProvider();
 
   return (
+    <PermissionsProvider permissions={[...permissionsForRole(access.role)]}>
     <AppShell
       userName={access.session.user.name ?? access.session.user.email}
       userRole={access.role}
       workspaceName={access.workspace.branding?.displayName ?? access.workspace.name ?? "Workspace"}
       companyName={access.workspace.branding?.companyName}
-      city="Lahore"
+      timeZone={access.workspace.timezone}
       calendarDemo={calendar.isDemo}
-      whatsappDemo={whatsapp.isDemo}
+      whatsappDemo={whatsappStatus().mode !== "live"} /* lamp is lit only when live and configured */
       demoMode={access.demoMode}
     >
       {children}
     </AppShell>
+    </PermissionsProvider>
   );
 }

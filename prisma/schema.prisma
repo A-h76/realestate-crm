@@ -16,11 +16,13 @@ enum WorkspaceRole {
 }
 
 enum PropertyType {
-  PLOT
-  HOUSE
-  APARTMENT
+  // US residential taxonomy.
+  SINGLE_FAMILY
+  CONDO
+  TOWNHOUSE
+  MULTI_FAMILY
+  LAND
   COMMERCIAL
-  AGRICULTURAL
 }
 
 enum PropertyPurpose {
@@ -37,9 +39,9 @@ enum PropertyStatus {
 }
 
 enum SizeUnit {
-  MARLA
-  KANAL
   SQFT
+  ACRE
+  SQM
   OTHER
 }
 
@@ -57,19 +59,28 @@ enum VerificationStatus {
 }
 
 enum Currency {
-  PKR
   USD
 }
 
 enum LeadSource {
-  ZAMEEN
+  // US residential lead sources.
+  ZILLOW
+  REALTOR_COM
+  HOMES_COM
+  WEB_FORM
+  OPEN_HOUSE
+  SIGN_CALL
+  AGENT_REFERRAL
   FACEBOOK_ADS
   REFERRAL
   WALK_IN
-  SIGNBOARD
-  WHATSAPP_INBOUND
   COLD_CALL
   EXISTING_CLIENT
+  WHATSAPP_INBOUND
+  GOOGLE_ADS
+  PHONE
+  MANUAL
+  OTHER
 }
 
 enum LeadStage {
@@ -154,6 +165,25 @@ enum CalendarEventStatus {
   NO_SHOW
 }
 
+/** Whether a workspace's AI may send on its own, or only draft for a human (D-11, US-33). */
+enum AiMode {
+  DRAFT
+  AUTO
+}
+
+enum MessagingChannel {
+  WHATSAPP
+  SMS
+  EMAIL
+}
+
+/** Never defaults to GRANTED: an address we have never seen is UNKNOWN, which blocks sends. */
+enum ConsentStatus {
+  UNKNOWN
+  GRANTED
+  REVOKED
+}
+
 enum WhatsAppDirection {
   INBOUND
   OUTBOUND
@@ -195,6 +225,9 @@ enum AuditAction {
   CALENDAR_EVENT_UPDATED
   CALENDAR_EVENT_DELETED
   WHATSAPP_MESSAGE_LOGGED
+  CONSENT_RECORDED
+  WORKSPACE_UPDATED
+  OUTBOUND_BLOCKED
   ACTIVITY_CREATED
   DEMO_RESET
   NOTE_CREATED
@@ -210,6 +243,10 @@ enum AuditAction {
   HANDOFF_TRIGGERED
   MEMBER_ROLE_CHANGED
   MEMBER_REMOVED
+  MEMBER_INVITED
+  MEMBER_INVITE_ACCEPTED
+  USER_LOGOUT
+  CSV_EXPORTED
 }
 
 enum IntelligenceKind {
@@ -268,6 +305,21 @@ enum NotificationType {
   HUMAN_HANDOFF_REQUIRED
 }
 
+/// One-time account setup link for invited members. Only the SHA-256 of the token is stored.
+model AccountSetupToken {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
@@ -292,14 +344,33 @@ model User {
   notifications     Notification[]
   auditLogs         AuditLog[]
   proposals         Proposal[]        @relation("ProposalOwner")
+  authSessions      AuthSession[]
+  setupTokens       AccountSetupToken[]
+}
+
+/// Server-side record behind each Auth.js JWT (`sid` claim), so sessions can be revoked.
+model AuthSession {
+  id        String    @id
+  userId    String
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Workspace {
   id          String    @id @default(cuid())
   name        String
   slug        String    @unique
-  timezone    String    @default("Asia/Karachi")
-  currency    Currency  @default(PKR)
+  timezone    String    @default("America/New_York")
+  currency    Currency  @default(USD)
+  /** CLDR region used to parse and display phone numbers for this workspace (US-01). */
+  region      String    @default("US")
+  /** DRAFT means AI never sends on its own; promotion to AUTO is a deliberate per-workspace act. */
+  aiMode      AiMode    @default(DRAFT)
   isDemo      Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -328,6 +399,7 @@ model Workspace {
   automationExecutions   AutomationExecution[]
   whatsAppIntegrations   WhatsAppIntegration[]
   webhookEvents          WebhookEvent[]
+  messagingConsents      MessagingConsent[]
 }
 
 model WorkspaceBranding {
@@ -447,17 +519,24 @@ model Property {
   title              String
   description        String?
   address            String?
+  /** Neighborhood / subdivision. Free text; `city`+`state`+`postalCode` carry the real address. */
   area               String?
-  city               String             @default("Lahore")
+  city               String
+  /** USPS two-letter state code. */
+  state              String?
+  postalCode         String?
+  country            String             @default("US")
   propertyType       PropertyType
   purpose            PropertyPurpose
   size               Decimal?           @db.Decimal(12, 2)
-  sizeUnit           SizeUnit           @default(MARLA)
+  sizeUnit           SizeUnit           @default(SQFT)
+  /** Lot size, in acres, when the listing reports one separately from living area. */
+  lotSizeAcres       Decimal?           @db.Decimal(10, 3)
   bedrooms           Int?
   bathrooms          Int?
   furnishedStatus    String?
   price              Decimal            @db.Decimal(18, 2)
-  currency           Currency           @default(PKR)
+  currency           Currency           @default(USD)
   status             PropertyStatus     @default(AVAILABLE)
   listingType        ListingType        @default(OPEN)
   ownerContactId     String?
@@ -482,6 +561,7 @@ model Property {
   @@index([workspaceId, status])
   @@index([workspaceId, area])
   @@index([workspaceId, propertyType])
+  @@index([workspaceId, state, postalCode])
   @@index([assignedAgentId])
 }
 
@@ -500,7 +580,7 @@ model Lead {
   source               LeadSource      @default(WHATSAPP_INBOUND)
   notes                String?
   estimatedValue       Decimal?        @db.Decimal(18, 2)
-  currency             Currency        @default(PKR)
+  currency             Currency        @default(USD)
   ownerId              String?
   stage                LeadStage       @default(NEW)
   accountId            String?
@@ -563,7 +643,7 @@ model Opportunity {
   linkedPropertyId  String?
   dealSide          DealSide
   value             Decimal   @db.Decimal(18, 2)
-  currency          Currency  @default(PKR)
+  currency          Currency  @default(USD)
   probability       Int       @default(0)
   stageId           String
   ownerId           String?
@@ -665,6 +745,9 @@ model Task {
   @@index([ownerId, dueAt])
   @@index([leadId])
   @@index([opportunityId])
+  /// Idempotency key for automation-created tasks (null for manual tasks).
+  dedupeKey String?
+  @@unique([workspaceId, dedupeKey])
 }
 
 model Proposal {
@@ -675,7 +758,7 @@ model Proposal {
   opportunityId    String?
   linkedPropertyId String?
   value            Decimal        @db.Decimal(18, 2)
-  currency         Currency       @default(PKR)
+  currency         Currency       @default(USD)
   status           ProposalStatus @default(DRAFT)
   sentAt           DateTime?
   viewedAt         DateTime?
@@ -734,6 +817,40 @@ model CalendarEvent {
   @@index([ownerId, startAt])
   @@index([leadId])
   @@index([type, status])
+}
+
+/**
+ * Server-side consent and suppression record for one messaging address (US-31, US-32).
+ *
+ * One row per (workspace, channel, address). `address` is the canonical identity for the
+ * channel: E.164 for WHATSAPP/SMS, lowercased e-mail for EMAIL. The absence of a row means
+ * UNKNOWN, which is NOT consent — the outbound gate refuses automated and marketing sends for
+ * any address that is not explicitly GRANTED, and refuses every send for REVOKED.
+ *
+ * REVOKED is terminal in practice: an inbound STOP writes it, and re-granting requires a new
+ * explicit opt-in with its own evidence. `evidence` records where consent came from (form URL,
+ * message id, import attestation) so a claim can be substantiated later.
+ */
+model MessagingConsent {
+  id          String           @id @default(cuid())
+  workspaceId String
+  channel     MessagingChannel
+  address     String
+  status      ConsentStatus    @default(UNKNOWN)
+  /** How this status was established, e.g. "inbound_stop", "web_form", "csv_attestation". */
+  source      String
+  evidence    String?
+  capturedAt  DateTime         @default(now())
+  revokedAt   DateTime?
+  leadId      String?
+  contactId   String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, channel, address])
+  @@index([workspaceId, status])
 }
 
 model WhatsAppMessage {
@@ -828,6 +945,9 @@ model Notification {
 
   @@index([userId, readAt, createdAt])
   @@index([workspaceId, type])
+  /// Idempotency key for automation-created notifications.
+  dedupeKey String?
+  @@unique([userId, dedupeKey])
 }
 
 model IntelligenceRun {

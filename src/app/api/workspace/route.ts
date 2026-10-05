@@ -4,8 +4,8 @@ import { writeAudit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { isDemoMode } from "@/lib/demo-mode";
 import { getCalendarProvider } from "@/lib/providers/calendar";
-import { getWhatsAppProvider } from "@/lib/providers/whatsapp";
-import { parseBody } from "@/lib/validations/common";
+import { getWhatsAppProvider, whatsappStatus } from "@/lib/providers/whatsapp";
+import { currencyEnum, parseBody, timeZoneEnum } from "@/lib/validations/common";
 import { measuredRoute } from "@/lib/perf";
 
 
@@ -14,6 +14,14 @@ const brandingSchema = z.object({
   displayName: z.string().trim().min(1).max(80).optional(),
   logoUrl: z.string().trim().url().optional().nullable().or(z.literal("")),
   accentColor: z.string().trim().regex(/^#([0-9a-fA-F]{6})$/).optional(),
+  /**
+   * Locale settings (US-12). Previously the settings page rendered these as if they were
+   * configurable while no route could write them; now they are. The time zone is checked
+   * against an allowlist of US IANA zones rather than accepting free text, because an
+   * unrecognized zone would make every date and SLA clock in the app silently wrong.
+   */
+  timezone: timeZoneEnum.optional(),
+  currency: currencyEnum.optional(),
 });
 
 export const GET = measuredRoute("GET /api/workspace", async (_request: Request) => {
@@ -54,8 +62,8 @@ export const GET = measuredRoute("GET /api/workspace", async (_request: Request)
         calendarDemo: calendar.isDemo,
         whatsappProvider: whatsapp.name,
         whatsappDemo: whatsapp.isDemo,
-        googleCalendarEnabled: process.env.GOOGLE_CALENDAR_ENABLED === "true",
         whatsappBusinessEnabled: process.env.WHATSAPP_BUSINESS_ENABLED === "true",
+        whatsappMode: whatsappStatus().mode,
       },
     });
   } catch (error) {
@@ -67,6 +75,43 @@ export const PATCH = measuredRoute("PATCH /api/workspace", async (request: Reque
   try {
     const { workspaceId, userId } = await requirePermission("workspace:write");
     const body = parseBody(brandingSchema, await request.json());
+
+    // Locale is on the Workspace row, branding is on its own; only write what was sent.
+    if (body.timezone !== undefined || body.currency !== undefined) {
+      await prisma.workspace.updateMany({
+        where: { id: workspaceId, deletedAt: null },
+        data: { timezone: body.timezone, currency: body.currency },
+      });
+      await writeAudit({
+        workspaceId,
+        actorId: userId,
+        action: "WORKSPACE_UPDATED",
+        entity: "Workspace",
+        entityId: workspaceId,
+        metadata: {
+          fields: Object.keys({
+            ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
+            ...(body.currency !== undefined ? { currency: body.currency } : {}),
+          }),
+          timezone: body.timezone,
+          currency: body.currency,
+        },
+      });
+    }
+
+    const brandingTouched =
+      body.companyName !== undefined ||
+      body.displayName !== undefined ||
+      body.logoUrl !== undefined ||
+      body.accentColor !== undefined;
+    if (!brandingTouched) {
+      const workspace = await prisma.workspace.findFirstOrThrow({
+        where: { id: workspaceId },
+        select: { timezone: true, currency: true },
+      });
+      return jsonOk({ workspace });
+    }
+
     const branding = await prisma.workspaceBranding.upsert({
       where: { workspaceId },
       create: {

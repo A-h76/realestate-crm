@@ -9,7 +9,7 @@ import bcrypt from "bcryptjs";
 
 function csvForRows(n: number) {
   const header = "firstName,email,phone,source";
-  const rows = Array.from({ length: n }, (_, i) => `Lead${i},lead${i}@example.com,+92300111${String(i).padStart(4, "0")},WALK_IN`);
+  const rows = Array.from({ length: n }, (_, i) => `Lead${i},lead${i}@example.com,+1312555${String(1000 + i).padStart(4, "0")},WALK_IN`);
   return [header, ...rows].join("\n");
 }
 
@@ -50,7 +50,6 @@ describe("external fetch timeouts", () => {
     assert.equal(FETCH_TIMEOUTS_MS.upstash, 800);
     assert.equal(FETCH_TIMEOUTS_MS.openMeteo, 2500);
     assert.equal(FETCH_TIMEOUTS_MS.whatsappGraph, 8000);
-    assert.equal(FETCH_TIMEOUTS_MS.googleCalendar, 8000);
     assert.ok(FETCH_TIMEOUTS_MS.upstash < FETCH_TIMEOUTS_MS.openMeteo);
     assert.ok(FETCH_TIMEOUTS_MS.openMeteo < FETCH_TIMEOUTS_MS.whatsappGraph);
   });

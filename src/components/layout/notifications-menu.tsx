@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
-import { formatDateTimePK } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 
 type Note = {
   id: string;
@@ -85,7 +85,7 @@ export function NotificationsMenu() {
                     {!n.readAt ? <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" /> : null}
                   </div>
                   {n.body ? <div className="mt-0.5 text-xs text-muted">{n.body}</div> : null}
-                  <div className="meta mt-1">{formatDateTimePK(n.createdAt)}</div>
+                  <div className="meta mt-1">{formatDateTime(n.createdAt)}</div>
                 </Link>
               ))
             )}

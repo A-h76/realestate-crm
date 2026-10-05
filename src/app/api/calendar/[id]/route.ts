@@ -65,15 +65,14 @@ export const PATCH = measuredRoute("PATCH /api/calendar/:id", async (request: Re
         leadId: event.leadId,
         opportunityId: event.opportunityId,
         payload: { siteVisitId: event.id },
+        eventKey: `site-visit-completed:${event.id}`,
       });
     }
 
     return jsonOk({
       ...event,
       demo: provider.isDemo,
-      message: provider.isDemo
-        ? "Demo Calendar event updated locally. No Google sync."
-        : "Calendar event updated.",
+      message: "Calendar event updated in the CRM. No external calendar was updated.",
     });
   } catch (error) {
     return jsonError(error);
@@ -105,9 +104,7 @@ export const DELETE = measuredRoute("DELETE /api/calendar/:id", async (_request:
       ok: true,
       id,
       demo: provider.isDemo,
-      message: provider.isDemo
-        ? "Demo Calendar event deleted locally. No Google sync."
-        : "Calendar event deleted.",
+      message: "Calendar event deleted from the CRM. No external calendar was updated.",
     });
   } catch (error) {
     return jsonError(error);

@@ -10,7 +10,7 @@ import { analyzeLostDeal } from "@/lib/ai/lost-deal-analysis";
 import { explainPropertyMatches } from "@/lib/ai/property-match";
 import { summarizeProposal } from "@/lib/ai/proposal-summary";
 import { parseBody } from "@/lib/validations/common";
-import { runAutomations } from "@/lib/automation/engine";
+import { dayBucket, runAutomations } from "@/lib/automation/engine";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { assertRelationsInWorkspace } from "@/lib/tenant";
 import { measuredRoute } from "@/lib/perf";
@@ -32,7 +32,6 @@ const createSchema = z.object({
   leadId: z.string().optional(),
   opportunityId: z.string().optional(),
   proposalId: z.string().optional(),
-  mixLanguage: z.boolean().optional(),
 });
 
 export const GET = measuredRoute("GET /api/intelligence", async (request: Request) => {
@@ -100,7 +99,6 @@ export const POST = measuredRoute("POST /api/intelligence", async (request: Requ
           leadId: body.leadId,
           actorId: userId,
           channel,
-          mixLanguage: body.mixLanguage,
         });
         if (!result) throw new ApiError(404, "Lead not found");
         return jsonOk({ ...result, notice: "Draft only. Nothing was sent." });
@@ -141,6 +139,7 @@ export const POST = measuredRoute("POST /api/intelligence", async (request: Requ
             trigger: "STRONG_PROPERTY_MATCH",
             leadId: body.leadId,
             payload: { matchScore: best.matchScore },
+            eventKey: `strong-match:${body.leadId}:${dayBucket()}`,
           });
         }
         return jsonOk(result);

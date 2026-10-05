@@ -10,21 +10,28 @@ import {
   propertyStatusEnum,
   propertyTypeEnum,
   sizeUnitEnum,
+  usPostalCode,
+  usStateCode,
   verificationStatusEnum,
 } from "./common";
 
 export const propertyCreateSchema = z.object({
   title: z.string().trim().min(1),
   description: z.string().optional().nullable(),
+  /** Street address, e.g. "1428 Elm Street". */
   address: z.string().trim().optional().nullable(),
+  /** Neighborhood or subdivision. Optional; the city/state/ZIP below are the real address. */
   area: z.string().trim().optional().nullable(),
-  city: z.string().trim().optional(),
+  city: z.string().trim().min(1, "City is required"),
+  state: usStateCode.optional().nullable(),
+  postalCode: usPostalCode.optional().nullable(),
   propertyType: propertyTypeEnum,
   purpose: propertyPurposeEnum,
   size: optionalDecimal,
   sizeUnit: sizeUnitEnum.optional(),
-  bedrooms: z.coerce.number().int().optional().nullable(),
-  bathrooms: z.coerce.number().int().optional().nullable(),
+  lotSizeAcres: optionalDecimal,
+  bedrooms: z.coerce.number().int().min(0).optional().nullable(),
+  bathrooms: z.coerce.number().min(0).optional().nullable(),
   furnishedStatus: z.string().trim().optional().nullable(),
   price: z.coerce.number(),
   currency: currencyEnum.optional(),

@@ -74,8 +74,8 @@ function statusPayload(opts: { phoneNumberId: string; id: string; status: string
 describe("WhatsApp webhook — end-to-end inbound flow", () => {
   let workspaceId: string;
   let phoneNumberId: string;
-  const waId = "923001234567";
-  const e164 = "+923001234567";
+  const waId = "14155550123";
+  const e164 = "+14155550123";
 
   before(async () => {
     process.env.WHATSAPP_APP_SECRET = SECRET;
@@ -98,9 +98,9 @@ describe("WhatsApp webhook — end-to-end inbound flow", () => {
       textMessagePayload({
         phoneNumberId,
         waId,
-        name: "Ahmed Khan",
+        name: "Ethan Caldwell",
         id: "wamid.1",
-        body: "5 marla house DHA 2 mein rent pe chahiye 80k tak",
+        body: "Looking to rent a townhouse in Logan Square, around 1,600 sq ft, up to $2,800/mo",
       }),
     );
     const result = await processWhatsAppWebhook(raw, sign(raw));
@@ -109,11 +109,11 @@ describe("WhatsApp webhook — end-to-end inbound flow", () => {
     const lead = await prisma.lead.findFirst({ where: { workspaceId, whatsappNumber: e164 } });
     assert.ok(lead);
     assert.equal(lead!.source, "WHATSAPP_INBOUND");
-    assert.equal(lead!.firstName, "Ahmed");
-    assert.equal(lead!.lastName, "Khan");
-    assert.equal(lead!.preferredArea, "DHA Phase 2");
+    assert.equal(lead!.firstName, "Ethan");
+    assert.equal(lead!.lastName, "Caldwell");
+    assert.equal(lead!.preferredArea, "Logan Square");
     assert.equal(lead!.propertyPurpose, "RENT");
-    assert.equal(Number(lead!.budgetMax), 80000);
+    assert.equal(Number(lead!.budgetMax), 2800);
 
     const message = await prisma.whatsAppMessage.findFirst({ where: { workspaceId, externalId: "wamid.1" } });
     assert.ok(message);
@@ -126,9 +126,9 @@ describe("WhatsApp webhook — end-to-end inbound flow", () => {
       textMessagePayload({
         phoneNumberId,
         waId,
-        name: "Ahmed Khan",
+        name: "Ethan Caldwell",
         id: "wamid.1",
-        body: "5 marla house DHA 2 mein rent pe chahiye 80k tak",
+        body: "Looking to rent a townhouse in Logan Square, around 1,600 sq ft, up to $2,800/mo",
       }),
     );
     const result = await processWhatsAppWebhook(raw, sign(raw));
@@ -142,14 +142,14 @@ describe("WhatsApp webhook — end-to-end inbound flow", () => {
 
   it("known lead: a later message fills only currently-blank fields, never overwrites confirmed ones", async () => {
     const raw = JSON.stringify(
-      textMessagePayload({ phoneNumberId, waId, name: "Ahmed Khan", id: "wamid.2", body: "budget 100k tak, 3 bed chahiye" }),
+      textMessagePayload({ phoneNumberId, waId, name: "Ethan Caldwell", id: "wamid.2", body: "budget is $3,400, and we need 3 bedrooms" }),
     );
     const result = await processWhatsAppWebhook(raw, sign(raw));
     assert.equal(result.status, "stored");
 
     const lead = await prisma.lead.findFirst({ where: { workspaceId, whatsappNumber: e164 } });
-    // budgetMax was already confirmed at 80000 — a later, different figure must not overwrite it.
-    assert.equal(Number(lead!.budgetMax), 80000);
+    // budgetMax was already confirmed at 2800 — a later, different figure must not overwrite it.
+    assert.equal(Number(lead!.budgetMax), 2800);
     // bedroomPref was blank — this message fills it.
     assert.equal(lead!.bedroomPref, 3);
 
@@ -159,7 +159,7 @@ describe("WhatsApp webhook — end-to-end inbound flow", () => {
 
   it("triggers exactly one human handoff task on a site-visit request, even under retry", async () => {
     const raw = JSON.stringify(
-      textMessagePayload({ phoneNumberId, waId, name: "Ahmed Khan", id: "wamid.3", body: "kal property dekh sakte hain?" }),
+      textMessagePayload({ phoneNumberId, waId, name: "Ethan Caldwell", id: "wamid.3", body: "can we schedule a showing tomorrow?" }),
     );
     await processWhatsAppWebhook(raw, sign(raw));
 
@@ -175,7 +175,7 @@ describe("WhatsApp webhook — end-to-end inbound flow", () => {
 
     // A second, unrelated message must not create a duplicate open handoff for the same reason.
     const raw2 = JSON.stringify(
-      textMessagePayload({ phoneNumberId, waId, name: "Ahmed Khan", id: "wamid.3b", body: "theek hai" }),
+      textMessagePayload({ phoneNumberId, waId, name: "Ethan Caldwell", id: "wamid.3b", body: "sounds good" }),
     );
     await processWhatsAppWebhook(raw2, sign(raw2));
     const tasksAfter = await prisma.task.findMany({
@@ -214,7 +214,7 @@ describe("WhatsApp webhook — end-to-end inbound flow", () => {
         workspaceId,
         conversationId: `lead:${lead!.id}`,
         direction: "OUTBOUND",
-        body: "Ji bilkul, kal 4 baje visit arrange kar sakte hain.",
+        body: "Absolutely — we can set up a showing tomorrow at 4pm.",
         status: "SENT",
         provider: "whatsapp-business",
         externalId: "wamid.out.1",
@@ -227,5 +227,32 @@ describe("WhatsApp webhook — end-to-end inbound flow", () => {
 
     const updated = await prisma.whatsAppMessage.findUnique({ where: { id: outbound.id } });
     assert.equal(updated!.status, "DELIVERED");
+  });
+
+  it("delivery statuses only move forward: a late 'delivered' or replayed 'sent' never undoes 'read'", async () => {
+    const lead = await prisma.lead.findFirst({ where: { workspaceId, whatsappNumber: e164 } });
+    const outbound = await prisma.whatsAppMessage.create({
+      data: { workspaceId, conversationId: `lead:${lead!.id}`, direction: "OUTBOUND", body: "ordering", status: "SENT", provider: "whatsapp-business", externalId: "wamid.out.order", leadId: lead!.id },
+    });
+    const post = async (status: string) => {
+      const raw = JSON.stringify(statusPayload({ phoneNumberId, id: "wamid.out.order", status }));
+      await processWhatsAppWebhook(raw, sign(raw));
+      return (await prisma.whatsAppMessage.findUniqueOrThrow({ where: { id: outbound.id } })).status;
+    };
+    assert.equal(await post("read"), "READ");
+    assert.equal(await post("delivered"), "READ", "late delivered ignored");
+    assert.equal(await post("sent"), "READ", "replayed sent ignored");
+    assert.equal(await post("failed"), "READ", "a delivered message cannot become failed");
+    assert.equal(await post("read"), "READ", "exact replay is harmless");
+  });
+
+  it("a failed callback marks a sent message FAILED", async () => {
+    const lead = await prisma.lead.findFirst({ where: { workspaceId, whatsappNumber: e164 } });
+    const outbound = await prisma.whatsAppMessage.create({
+      data: { workspaceId, conversationId: `lead:${lead!.id}`, direction: "OUTBOUND", body: "will fail", status: "SENT", provider: "whatsapp-business", externalId: "wamid.out.fail", leadId: lead!.id },
+    });
+    const raw = JSON.stringify(statusPayload({ phoneNumberId, id: "wamid.out.fail", status: "failed" }));
+    await processWhatsAppWebhook(raw, sign(raw));
+    assert.equal((await prisma.whatsAppMessage.findUniqueOrThrow({ where: { id: outbound.id } })).status, "FAILED");
   });
 });

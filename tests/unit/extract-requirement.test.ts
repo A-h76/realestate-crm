@@ -3,42 +3,59 @@ import { describe, it } from "node:test";
 import { extractRequirement } from "../../src/lib/whatsapp/extract-requirement";
 
 describe("extractRequirement", () => {
-  it("parses a mixed Roman Urdu / English rental brief", () => {
-    const out = extractRequirement("Aoa bhai 5 marla house DHA 2 mein rent pe chahiye 80k tak");
+  it("parses a full rental brief", () => {
+    const out = extractRequirement("Hi, looking to rent a 3 bedroom townhouse in Logan Square, up to $2,900/mo");
     assert.equal(out.propertyPurpose, "RENT");
     assert.equal(out.intentType, "RENT");
-    assert.equal(out.propertyTypePref, "HOUSE");
-    assert.equal(out.preferredArea, "DHA Phase 2");
-    assert.equal(out.sizeUnitPref, "MARLA");
-    assert.equal(out.sizePrefMin, 5);
-    assert.equal(out.sizePrefMax, 5);
-    assert.equal(out.budgetMax, 80_000);
+    assert.equal(out.propertyTypePref, "TOWNHOUSE");
+    assert.equal(out.preferredArea, "Logan Square");
+    assert.equal(out.bedroomPref, 3);
+    assert.equal(out.budgetMax, 2_900);
   });
 
-  it("parses a size/area/budget brief without guessing a purpose from a bare 'chahiye'", () => {
-    // "chahiye" (want) alone is genuine buy/rent ambiguity — P0 #5's
-    // conversational layer asks the customer explicitly rather than having
-    // the extractor assume BUY, so purpose/intentType must stay unset here.
-    const out = extractRequirement("1 kanal house Bahria Town mein chahiye, budget 150 lakh se 250 lakh tak");
+  it("parses square footage and a budget range for a purchase", () => {
+    const out = extractRequirement(
+      "We want to buy a single-family home in Naperville, at least 2,400 sq ft, between 500k and 750k",
+    );
+    assert.equal(out.propertyPurpose, "SALE");
+    assert.equal(out.intentType, "BUY");
+    assert.equal(out.propertyTypePref, "SINGLE_FAMILY");
+    assert.equal(out.preferredArea, "Naperville");
+    assert.equal(out.sizeUnitPref, "SQFT");
+    assert.equal(out.sizePrefMin, 2_400);
+    assert.equal(out.budgetMin, 500_000);
+    assert.equal(out.budgetMax, 750_000);
+  });
+
+  it("does not guess a purpose from a bare 'looking for'", () => {
+    // Genuine buy/rent ambiguity: the conversational layer asks the customer explicitly
+    // rather than having the extractor assume BUY, so purpose/intentType stay unset.
+    const out = extractRequirement("Looking for a condo in Wicker Park, 3 bedrooms, around $600k");
     assert.equal(out.propertyPurpose, undefined);
     assert.equal(out.intentType, undefined);
-    assert.equal(out.propertyTypePref, "HOUSE");
-    assert.equal(out.preferredArea, "Bahria Town");
-    assert.equal(out.sizeUnitPref, "KANAL");
-    assert.equal(out.budgetMin, 15_000_000);
-    assert.equal(out.budgetMax, 25_000_000);
+    assert.equal(out.propertyTypePref, "CONDO");
+    assert.equal(out.preferredArea, "Wicker Park");
+    assert.equal(out.bedroomPref, 3);
+    assert.equal(out.budgetMax, 600_000);
   });
 
   it("returns nothing for chit-chat with no requirement signal", () => {
-    const out = extractRequirement("Aoa, kesy hain aap?");
-    assert.deepEqual(out, {});
+    assert.deepEqual(extractRequirement("Hi, how are you?"), {});
   });
 
   it("detects a seller lead separately from a buyer lead", () => {
-    const out = extractRequirement("Mujhe apna plot bechna hai Gulberg mein");
+    const out = extractRequirement("I want to sell my condo in Hyde Park");
     assert.equal(out.propertyPurpose, "SALE");
     assert.equal(out.intentType, "SELL");
-    assert.equal(out.propertyTypePref, "PLOT");
-    assert.equal(out.preferredArea, "Gulberg");
+    assert.equal(out.propertyTypePref, "CONDO");
+    assert.equal(out.preferredArea, "Hyde Park");
+  });
+
+  it("treats land acreage separately from finished square footage", () => {
+    const out = extractRequirement("Buying 5 acres of vacant land near Boerne under $400k");
+    assert.equal(out.propertyTypePref, "LAND");
+    assert.equal(out.sizeUnitPref, "ACRE");
+    assert.equal(out.sizePrefMin, 5);
+    assert.equal(out.budgetMax, 400_000);
   });
 });

@@ -2,12 +2,13 @@ import { jsonError, jsonOk, requirePermission } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { paginationSkipTake, parseQuery, paginationSchema } from "@/lib/validations/common";
 import { z } from "zod";
+import { AuditAction } from "@prisma/client";
 import { measuredRoute } from "@/lib/perf";
 
 
 const auditQuerySchema = paginationSchema.extend({
-  entity: z.string().optional(),
-  action: z.string().optional(),
+  entity: z.string().max(64).optional(),
+  action: z.enum(AuditAction).optional(),
 });
 
 export const GET = measuredRoute("GET /api/audit", async (request: Request) => {
@@ -19,7 +20,7 @@ export const GET = measuredRoute("GET /api/audit", async (request: Request) => {
     const where = {
       workspaceId,
       ...(query.entity ? { entity: query.entity } : {}),
-      ...(query.action ? { action: query.action as never } : {}),
+      ...(query.action ? { action: query.action } : {}),
     };
 
     const [items, total] = await Promise.all([

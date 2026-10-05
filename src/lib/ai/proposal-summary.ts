@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { prisma } from "@/lib/db";
 import { parseAiOutput, proposalSummarySchema } from "./schemas";
 import { storeIntelligenceRun } from "./store";
@@ -19,7 +19,7 @@ export async function summarizeProposal(input: {
   if (!proposal) return null;
 
   const output = parseAiOutput(proposalSummarySchema, {
-    summary: `${proposal.proposalNumber} is ${proposal.status.toLowerCase()} at ${formatCurrency(Number(proposal.value))}${proposal.linkedProperty ? ` for ${proposal.linkedProperty.title}` : ""}. Viewed ${proposal.viewCount} time(s).`,
+    summary: `${proposal.proposalNumber} is ${proposal.status.toLowerCase()} at ${formatMoney(Number(proposal.value))}${proposal.linkedProperty ? ` for ${proposal.linkedProperty.title}` : ""}. Viewed ${proposal.viewCount} time(s).`,
     highlights: [
       proposal.opportunity ? `Opportunity: ${proposal.opportunity.name}` : "No opportunity linked",
       proposal.lead ? `Lead: ${proposal.lead.firstName}` : "No lead linked",
@@ -30,7 +30,7 @@ export async function summarizeProposal(input: {
         ? "Call while the proposal is warm."
         : proposal.status === "SENT"
           ? "Confirm receipt on WhatsApp."
-          : "Send the proposal after a site visit.",
+          : "Send the proposal after a showing.",
   });
 
   const run = await storeIntelligenceRun({

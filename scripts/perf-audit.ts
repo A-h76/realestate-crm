@@ -56,7 +56,7 @@ function csvForRows(n: number) {
   const header = "firstName,email,phone,whatsappNumber,source";
   const rows = Array.from(
     { length: n },
-    (_, i) => `Perf${i},perf${i}@timing.invalid,+92300999${String(i).padStart(4, "0")},+92300999${String(i).padStart(4, "0")},WALK_IN`,
+    (_, i) => `Perf${i},perf${i}@timing.invalid,+1312555${String(2000 + i).padStart(4, "0")},+1312555${String(2000 + i).padStart(4, "0")},WALK_IN`,
   );
   return [header, ...rows].join("\n");
 }
