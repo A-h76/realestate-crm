@@ -251,6 +251,8 @@ export async function storeInboundMessage(input: {
   await writeAudit({
     workspaceId: input.workspaceId,
     actorId: sim?.actorId,
+    actorType: sim ? "USER" : "CUSTOMER",
+    providerEventId: sim ? undefined : input.externalId,
     action: "WHATSAPP_MESSAGE_LOGGED",
     entity: "WhatsAppMessage",
     entityId: rowId,

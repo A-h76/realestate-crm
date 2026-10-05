@@ -41,7 +41,7 @@ export const POST = measuredRoute(
 
       await prisma.lead.updateMany({
         where: { id, workspaceId, deletedAt: null },
-        data: { ownerId: assignment.agentId },
+        data: { ownerId: assignment.agentId, assignedAt: new Date() },
       });
       const lead = await prisma.lead.findFirst({
         where: { id, workspaceId },
@@ -54,6 +54,8 @@ export const POST = measuredRoute(
         action: "LEAD_UPDATED",
         entity: "Lead",
         entityId: id,
+        fromState: existing.ownerId,
+        toState: assignment.agentId,
         metadata: {
           fields: ["ownerId"],
           assignmentStrategy: body.ownerId ? "manual" : "least_loaded",

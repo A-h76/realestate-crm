@@ -30,7 +30,7 @@ export async function createLeadRecord(
   let ownerId = body.ownerId ?? actorId;
   let autoAssigned = false;
   if (!ownerId) {
-    ownerId = (await assignLeastLoadedAgent(workspaceId))?.agentId ?? null;
+    ownerId = (await assignLeastLoadedAgent(workspaceId, tx))?.agentId ?? null;
     autoAssigned = ownerId !== null;
   }
 
@@ -51,6 +51,7 @@ export async function createLeadRecord(
       estimatedValue: body.estimatedValue,
       currency: body.currency,
       ownerId,
+      assignedAt: ownerId ? new Date() : null,
       stage: body.stage,
       accountId: body.accountId,
       contactId: body.contactId,

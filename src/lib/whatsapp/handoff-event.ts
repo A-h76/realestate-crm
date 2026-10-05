@@ -87,12 +87,14 @@ export async function triggerHandoff(input: {
     const assignment = await assignLeastLoadedAgent(workspaceId);
     if (assignment) {
       ownerId = assignment.agentId;
-      await prisma.lead.updateMany({ where: { id: lead.id, workspaceId }, data: { ownerId } });
+      await prisma.lead.updateMany({ where: { id: lead.id, workspaceId }, data: { ownerId, assignedAt: new Date() } });
       await writeAudit({
         workspaceId,
         action: "LEAD_UPDATED",
         entity: "Lead",
         entityId: lead.id,
+        fromState: null,
+        toState: ownerId,
         metadata: { fields: ["ownerId"], assignmentStrategy: "least_loaded", reason: "handoff_auto_assign" },
       });
     }

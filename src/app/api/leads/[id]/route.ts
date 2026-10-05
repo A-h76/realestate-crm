@@ -79,6 +79,9 @@ export const PATCH = measuredRoute("PATCH /api/leads/:id", async (request: Reque
         where: { id, workspaceId, deletedAt: null },
         data: {
           ...body,
+          ...(body.ownerId !== undefined && body.ownerId !== existing.ownerId
+            ? { assignedAt: body.ownerId ? new Date() : null }
+            : {}),
           phone: storedPhone(body.phone),
           whatsappNumber: storedPhone(body.whatsappNumber),
           email: body.email === undefined ? undefined : body.email || null,
@@ -96,6 +99,8 @@ export const PATCH = measuredRoute("PATCH /api/leads/:id", async (request: Reque
       action: stageChanged ? "LEAD_STAGE_CHANGED" : "LEAD_UPDATED",
       entity: "Lead",
       entityId: lead.id,
+      fromState: stageChanged ? existing.stage : undefined,
+      toState: stageChanged ? lead.stage : undefined,
       metadata: stageChanged
         ? { from: existing.stage, to: lead.stage }
         : { fields: Object.keys(body) },

@@ -48,7 +48,7 @@ export async function takeOverLead(workspaceId: string, leadId: string, userId: 
       if (marker) return { alreadyHandling: true as const, claimed: 0 };
     }
 
-    await tx.lead.updateMany({ where: { id: leadId, workspaceId }, data: { ownerId: userId } });
+    await tx.lead.updateMany({ where: { id: leadId, workspaceId }, data: { ownerId: userId, ...(previousOwnerId === userId ? {} : { assignedAt: new Date() }) } });
 
     const claimedTasks = await tx.task.updateMany({
       where: {
@@ -81,6 +81,8 @@ export async function takeOverLead(workspaceId: string, leadId: string, userId: 
         action: "LEAD_UPDATED",
         entity: "Lead",
         entityId: leadId,
+        fromState: previousOwnerId,
+        toState: userId,
         metadata: { fields: ["ownerId"], reason: "handoff_take_over", previousOwnerId, activityId: activity.id },
       },
       tx,

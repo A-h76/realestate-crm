@@ -2,6 +2,7 @@ import "server-only";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import type { Lead, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { CONTACT_ACTIVITY_TYPES } from "@/lib/leads/custody";
 import { filterAndScoreProperties } from "@/lib/matching/properties";
 import {
   WORKABLE_STAGES,
@@ -22,7 +23,6 @@ import {
 } from "./rules";
 
 const LEAD_LIMIT = 500;
-const CONTACT_ACTIVITY_TYPES = ["CALL", "EMAIL", "MEETING", "WHATSAPP_MESSAGE", "SITE_VISIT"] as const;
 const OPEN_TASK = ["TODO", "IN_PROGRESS"] as const;
 
 /** The workspace-local calendar day containing `now`. DST-safe: the end is the next local midnight. */

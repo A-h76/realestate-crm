@@ -247,6 +247,16 @@ enum AuditAction {
   MEMBER_INVITE_ACCEPTED
   USER_LOGOUT
   CSV_EXPORTED
+  LEAD_FIRST_CONTACT
+}
+
+/// Who caused an audit event. SYSTEM = our own code with no human or AI behind it (scheduler, intake).
+enum ActorType {
+  USER
+  SYSTEM
+  AI
+  CUSTOMER
+  PROVIDER
 }
 
 enum IntelligenceKind {
@@ -604,6 +614,10 @@ model Lead {
   intentScore          Int             @default(0)
   valueScore           Int             @default(0)
   lastActivityAt       DateTime?
+  /// When the current ownerId was set. null = never assigned (or assigned before this column existed and not backfilled).
+  assignedAt           DateTime?
+  /// First real outreach to the lead (message that went out, or a completed call/email/meeting). null = none yet / unknown.
+  firstContactAt       DateTime?
   nextAction           String?
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
@@ -631,6 +645,7 @@ model Lead {
   @@index([whatsappNumber])
   @@index([workspaceId, email])
   @@index([workspaceId, phone])
+  @@index([workspaceId, firstContactAt, createdAt])
 }
 
 model Opportunity {
@@ -1048,6 +1063,13 @@ model AuditLog {
   entityId    String
   metadata    Json?
   createdAt   DateTime    @default(now())
+  actorType       ActorType @default(SYSTEM)
+  /// When it happened in the real world (e.g. the provider's timestamp); createdAt is when we recorded it.
+  occurredAt      DateTime  @default(now())
+  fromState       String?
+  toState         String?
+  /// Provider's own event/message id, so an event can be verified against the provider's records.
+  providerEventId String?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   actor     User?     @relation(fields: [actorId], references: [id])

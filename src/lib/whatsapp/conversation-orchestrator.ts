@@ -6,6 +6,7 @@ import { getWhatsAppProvider } from "@/lib/providers/whatsapp";
 import { getAIProvider } from "@/lib/ai/provider";
 import { applyRequirementUpdate, type RequirementSnapshot } from "./extract-requirement";
 import { triggerHandoff } from "./handoff-event";
+import { markFirstContact } from "@/lib/leads/custody";
 import {
   auditOutboundBlock,
   authorizeOutbound,
@@ -175,6 +176,10 @@ export async function runConversationTurn(input: {
     entityId: sent.id,
     metadata: { direction: "OUTBOUND", auto: true, decision: decision.type },
   });
+
+  if (sent.status !== "FAILED" && sent.status !== "DRAFT") {
+    await markFirstContact({ workspaceId: input.workspaceId, leadId: input.leadId, at: sent.sentAt, actorType: "AI", via: "ai_reply" });
+  }
 
   return { decision, sent };
 }

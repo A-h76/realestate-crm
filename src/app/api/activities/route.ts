@@ -4,6 +4,7 @@ import { writeAudit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { assertRelationsInWorkspace, touchLeadActivity } from "@/lib/tenant";
+import { CONTACT_ACTIVITY_TYPES, markFirstContact } from "@/lib/leads/custody";
 import { emptyToNull, sortOrder } from "@/lib/validations/helpers";
 import { paginationSkipTake, parseBody, parseQuery } from "@/lib/validations/common";
 import { activityCreateSchema, activityListQuerySchema } from "@/lib/validations/activities";
@@ -92,6 +93,9 @@ export const POST = measuredRoute("POST /api/activities", async (request: Reques
 
     if (body.leadId) {
       await touchLeadActivity(workspaceId, body.leadId, activity.date);
+      if (activity.status === "COMPLETED" && (CONTACT_ACTIVITY_TYPES as readonly string[]).includes(activity.type)) {
+        await markFirstContact({ workspaceId, leadId: body.leadId, at: activity.date, actorId: userId, actorType: "USER", via: `activity_${activity.type.toLowerCase()}` });
+      }
     }
 
     await writeAudit({

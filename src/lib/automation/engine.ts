@@ -107,6 +107,7 @@ async function recordAudit(
     buffer.push({
       workspaceId: input.workspaceId,
       actorId: input.actorId ?? null,
+      actorType: input.actorType ?? (input.actorId ? "USER" : "SYSTEM"),
       action: input.action,
       entity: input.entity,
       entityId: input.entityId,

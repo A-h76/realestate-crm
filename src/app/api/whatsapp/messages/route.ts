@@ -9,6 +9,7 @@ import { whatsappSendSchema } from "@/lib/validations/whatsapp";
 import { measuredRoute } from "@/lib/perf";
 import { auditOutboundBlock, authorizeOutbound, lockConversationControl } from "@/lib/messaging/outbound-gate";
 import { ApiError } from "@/lib/errors";
+import { markFirstContact } from "@/lib/leads/custody";
 
 
 export const POST = measuredRoute("POST /api/whatsapp/messages", async (request: Request) => {
@@ -97,6 +98,9 @@ export const POST = measuredRoute("POST /api/whatsapp/messages", async (request:
 
     if (body.leadId) {
       await touchLeadActivity(workspaceId, body.leadId);
+      if (message.status !== "FAILED" && message.status !== "DRAFT") {
+        await markFirstContact({ workspaceId, leadId: body.leadId, at: message.sentAt, actorId: userId, actorType: "USER", via: "whatsapp_message" });
+      }
     }
 
     const deliveryUnknown = (message.metadata as { deliveryUnknown?: boolean } | null)?.deliveryUnknown === true;

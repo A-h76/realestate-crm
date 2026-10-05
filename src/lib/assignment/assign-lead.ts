@@ -1,4 +1,4 @@
-import type { LeadStage } from "@prisma/client";
+import type { LeadStage, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 const OPEN_LEAD_STAGES: LeadStage[] = ["NEW", "CONTACTED", "QUALIFIED", "NURTURING"];
@@ -14,15 +14,20 @@ export type AssignmentResult = {
  * Isolated behind this function so the strategy can later be swapped for
  * round-robin, territory, or manual assignment without touching callers.
  */
-export async function assignLeastLoadedAgent(workspaceId: string): Promise<AssignmentResult | null> {
-  const agents = await prisma.workspaceMember.findMany({
+// `db`: pass the open transaction when called inside one. Using the global client there needs a second pooled
+// connection while the transaction holds the first, which exhausts the pool under concurrent intake.
+export async function assignLeastLoadedAgent(
+  workspaceId: string,
+  db: Pick<Prisma.TransactionClient, "workspaceMember" | "lead"> = prisma,
+): Promise<AssignmentResult | null> {
+  const agents = await db.workspaceMember.findMany({
     where: { workspaceId, role: "AGENT" },
     select: { userId: true, createdAt: true, user: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });
   if (agents.length === 0) return null;
 
-  const loads = await prisma.lead.groupBy({
+  const loads = await db.lead.groupBy({
     by: ["ownerId"],
     where: {
       workspaceId,
