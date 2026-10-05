@@ -119,7 +119,7 @@ describe("UX audit demo workspace seed", { timeout: 180_000 }, () => {
     assert.equal(lead.propertyTypePref, "TOWNHOUSE");
     assert.equal(lead.bedroomPref, 3);
     assert.equal(Number(lead.budgetMax), 2_900);
-    assert.equal(lead.ownerId, null, "brand-new lead stays unassigned for the manager to assign");
+    assert.ok(lead.ownerId, "system intake assigns an owner so no lead is ever unowned");
   });
 
   it("Flow 2: leaves an incomplete requirement with the next question asked", async () => {

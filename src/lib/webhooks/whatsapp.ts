@@ -224,6 +224,8 @@ export async function storeInboundMessage(input: {
         },
         select: { id: true },
       });
+      // A customer message is real activity: without this the inactive-lead sweep can flag a lead who just wrote in.
+      await tx.lead.updateMany({ where: { id: lead.id, workspaceId: input.workspaceId }, data: { lastActivityAt: new Date() } });
       return { lead, existingLead, isNewLead, previousMessage, rowId: row.id };
     }),
   ).catch((error: unknown) => {

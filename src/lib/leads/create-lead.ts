@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { runAutomations } from "@/lib/automation/engine";
 import { ApiError } from "@/lib/errors";
+import { assignLeastLoadedAgent } from "@/lib/assignment/assign-lead";
 import { canonicalPhone, findDuplicateLead, identityKeys, lockLeadIdentities } from "@/lib/leads/identity";
 import type { LeadCreateInput } from "@/lib/validations/leads";
 
@@ -23,6 +24,16 @@ export async function createLeadRecord(
   actorId: string | null,
   body: LeadCreateInput,
 ) {
+  // Every lead leaves intake owned: an explicit owner, else the acting user, else (system intake such as a
+  // WhatsApp webhook has no actor) the least-loaded agent. null only when the workspace has no agents,
+  // which the Needs Attention "unassigned" rule then surfaces.
+  let ownerId = body.ownerId ?? actorId;
+  let autoAssigned = false;
+  if (!ownerId) {
+    ownerId = (await assignLeastLoadedAgent(workspaceId))?.agentId ?? null;
+    autoAssigned = ownerId !== null;
+  }
+
   const lead = await tx.lead.create({
     data: {
       workspaceId,
@@ -39,7 +50,7 @@ export async function createLeadRecord(
       notes: body.notes,
       estimatedValue: body.estimatedValue,
       currency: body.currency,
-      ownerId: body.ownerId ?? actorId,
+      ownerId,
       stage: body.stage,
       accountId: body.accountId,
       contactId: body.contactId,
@@ -66,7 +77,11 @@ export async function createLeadRecord(
       action: "LEAD_CREATED",
       entity: "Lead",
       entityId: lead.id,
-      metadata: { stage: lead.stage, source: lead.source },
+      metadata: {
+        stage: lead.stage,
+        source: lead.source,
+        ...(autoAssigned ? { assignmentStrategy: "least_loaded", reason: "intake_auto_assign" } : {}),
+      },
     },
     tx,
   );

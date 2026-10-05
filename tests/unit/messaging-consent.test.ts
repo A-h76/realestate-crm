@@ -45,6 +45,9 @@ describe("isOptOutMessage — a standalone keyword only", () => {
     assert.equal(isOptOutMessage("START"), false);
     assert.equal(isOptInMessage("START"), true);
     assert.equal(isOptInMessage("stop"), false);
+    // A bare "yes" answers any question; it must never be recorded as messaging consent.
+    assert.equal(isOptInMessage("yes"), false);
+    assert.equal(isOptInMessage("Yes!"), false);
   });
 });
 

@@ -13,7 +13,9 @@ import { canonicalPhone } from "@/lib/phone";
 
 /** Words that, sent on their own, are an opt-out under US carrier/CTIA convention. */
 const OPT_OUT_KEYWORDS = new Set(["stop", "stopall", "unsubscribe", "cancel", "end", "quit", "optout", "opt-out", "revoke"]);
-const OPT_IN_KEYWORDS = new Set(["start", "unstop", "yes", "optin", "opt-in"]);
+// "yes" is deliberately absent: it answers any question ("want to see it Saturday?"), so treating it as
+// opt-in would record messaging consent the customer never gave.
+const OPT_IN_KEYWORDS = new Set(["start", "unstop", "optin", "opt-in"]);
 
 /**
  * True when an inbound body is an opt-out. Deliberately strict: only a message whose entire
