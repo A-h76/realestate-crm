@@ -248,6 +248,8 @@ enum AuditAction {
   USER_LOGOUT
   CSV_EXPORTED
   LEAD_FIRST_CONTACT
+  CUSTODY_SLA_BREACH
+  CUSTODY_ESCALATED
 }
 
 /// Who caused an audit event. SYSTEM = our own code with no human or AI behind it (scheduler, intake).
@@ -314,6 +316,7 @@ enum NotificationType {
   FOLLOW_UP_CREATED
   HUMAN_HANDOFF_REQUIRED
   DRAFT_REPLY_WAITING
+  RESPONSE_SLA_BREACH
 }
 
 /// One-time account setup link for invited members. Only the SHA-256 of the token is stored.

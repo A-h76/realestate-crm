@@ -50,3 +50,24 @@ turn is skipped if an outbound already follows the inbound). At most 5 attempts 
 Cadence: every 5 minutes (`*/5 * * * *`, Railway's minimum). Start command: `npm run webhooks:recover`.
 **The Railway cron service for this is a manual step and is not confirmed in production.** Until it exists, a lost turn
 is not recovered.
+
+## Custody sweep (`npm run custody:sweep`)
+Backs "every lead owned, every minute measured": `scripts/run-custody-sweep.ts` calls `sweepCustody()` (`src/lib/custody/sweep.ts`)
+for every non-deleted workspace. It reuses the Needs Attention rules (`detectFlags`) rather than re-implementing them.
+
+| Flag | Action |
+| --- | --- |
+| `UNASSIGNED` | Assign the least-loaded agent (audit `LEAD_UPDATED`, reason `custody_sweep_auto_assign`). No agents: left unowned. |
+| `RESPOND_NOW` (customer waiting) / `NEW_UNCONTACTED` | Waiting 5 min: notify the owner (`RESPONSE_SLA_BREACH`, audit `CUSTODY_SLA_BREACH`). Waiting 15 min: also notify MANAGER/ADMIN members (OWNER if there are none), audit `CUSTODY_ESCALATED`. No owner: managers are told at 5 min. |
+| `OVERDUE_FOLLOW_UP` | Owner told at once (`FOLLOW_UP_OVERDUE`); managers after 24 h overdue. |
+
+Thresholds are constants in `CUSTODY_SLA`. Idempotency: one notification per recipient per waiting episode
+(`custody:<flag>:<leadId>:<waitStartMs>:...` via `notifyOnce`), so a re-run, or an overlapping one, never repeats it; a new
+episode (the customer writes again after being answered) notifies again. A per-workspace advisory lock makes overlapping
+runs no-ops. One workspace failing is logged and the rest still run; exit code 1 if any failed. Limits: 500 workable leads
+per workspace per run. The first run in a workspace with an old backlog notifies for every lead already past its SLA.
+
+Cadence: every 5 minutes (`*/5 * * * *`, Railway's minimum). Start command: `npm run custody:sweep` (the npm script passes
+`--conditions=react-server` because the attention loader imports `server-only`).
+**The Railway cron service for this is a manual step and is not confirmed in production.** Until it exists, no SLA breach
+is notified or escalated.

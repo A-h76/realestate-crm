@@ -14,6 +14,7 @@
     "e2e:golden-path": "tsx scripts/e2e-golden-path.ts",
     "e2e:rbac": "tsx scripts/e2e-rbac.ts",
     "automations:scheduled": "tsx scripts/run-inactive-lead-automations.ts",
+    "custody:sweep": "tsx --conditions=react-server scripts/run-custody-sweep.ts",
     "webhooks:recover": "tsx scripts/run-webhook-recovery.ts",
     "integrity:check": "tsx scripts/check-workspace-integrity.ts",
     "perf:audit": "tsx scripts/perf-audit.ts",
