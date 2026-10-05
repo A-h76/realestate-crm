@@ -1,5 +1,6 @@
 import type { WhatsAppMessage } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { notifyOnce } from "@/lib/notifications";
 import { writeAudit } from "@/lib/audit";
 import { filterAndScoreProperties } from "@/lib/matching/properties";
 import { getWhatsAppProvider } from "@/lib/providers/whatsapp";
@@ -159,6 +160,20 @@ export async function runConversationTurn(input: {
       entityId: draft.id,
       metadata: { direction: "OUTBOUND", auto: true, decision: decision.type, status: "DRAFT" },
     });
+    // DRAFT is the default mode: without this the owner never learns a reply is waiting and the first-response promise fails silently.
+    if (lead.ownerId) {
+      await notifyOnce({
+        workspaceId: input.workspaceId,
+        userId: lead.ownerId,
+        type: "DRAFT_REPLY_WAITING",
+        title: "AI reply waiting for your approval",
+        body: "A customer wrote in and a drafted reply needs review before it is sent.",
+        href: `/conversations?lead=${input.leadId}`,
+        entityType: "Lead",
+        entityId: input.leadId,
+        dedupeKey: `draft-reply:${draft.id}`,
+      });
+    }
     return { decision, sent: null, draft, blocked: authorization.reason };
   }
 

@@ -313,6 +313,7 @@ enum NotificationType {
   TASK_CREATED
   FOLLOW_UP_CREATED
   HUMAN_HANDOFF_REQUIRED
+  DRAFT_REPLY_WAITING
 }
 
 /// One-time account setup link for invited members. Only the SHA-256 of the token is stored.
