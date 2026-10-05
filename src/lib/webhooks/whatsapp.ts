@@ -1,9 +1,9 @@
 import { Prisma, type WhatsAppMessageStatus } from "@prisma/client";
 import { ApiError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
-import { notify } from "@/lib/notifications";
+import { notifyOnce } from "@/lib/notifications";
 import { writeAudit } from "@/lib/audit";
-import { isOptInMessage, isOptOutMessage, recordConsent } from "@/lib/messaging/consent";
+import { consentAddress, isOptInMessage, isOptOutMessage, recordConsent } from "@/lib/messaging/consent";
 import { verifyHubSignature256 } from "@/lib/security/hmac";
 import { measureExecution } from "@/lib/perf";
 import { createLeadRecord, runLeadCreatedAutomations } from "@/lib/leads/create-lead";
@@ -235,41 +235,84 @@ export async function storeInboundMessage(input: {
 
   if (!persisted) return "duplicate";
   const { lead, existingLead, isNewLead, previousMessage, rowId } = persisted;
-  const conversationId = `lead:${lead.id}`;
 
-  if (isNewLead) {
-    await runLeadCreatedAutomations(input.workspaceId, null, lead.id);
-  } else if (existingLead) {
-    await applyRequirementUpdate(
-      input.workspaceId,
-      existingLead.id,
-      existingLead as unknown as RequirementSnapshot,
-      extracted,
-    );
+  await runPostCommitSteps({
+    workspaceId: input.workspaceId,
+    leadId: lead.id,
+    ownerId: lead.ownerId,
+    phone: input.phone,
+    body: input.body,
+    rowId,
+    extractable: input.extractable,
+    extracted,
+    isNewLead,
+    existingLead: existingLead as unknown as RequirementSnapshot | null,
+    previousMessage,
+    sim,
+    redrive: false,
+  });
+  await markEventProcessed(sim ? "whatsapp-simulated" : "whatsapp", input.externalId);
+  return "created";
+}
+
+type PostCommitContext = {
+  workspaceId: string;
+  leadId: string;
+  ownerId: string | null;
+  phone: string;
+  body: string;
+  rowId: string;
+  extractable: boolean;
+  extracted: ReturnType<typeof extractRequirement>;
+  isNewLead: boolean;
+  existingLead: RequirementSnapshot | null;
+  previousMessage: string | null;
+  sim?: { actorId: string };
+  /** true when the recovery sweep replays a turn the first attempt did not finish: every step must tolerate having already run. */
+  redrive: boolean;
+};
+
+/**
+ * Everything that follows the claim+message commit. Each step is safe to run twice, because the recovery sweep replays
+ * the whole sequence for an event whose first attempt died part-way (see recoverStalledWebhookEvents).
+ */
+async function runPostCommitSteps(c: PostCommitContext): Promise<void> {
+  const { workspaceId, leadId, rowId, sim } = c;
+  const conversationId = `lead:${leadId}`;
+
+  if (c.isNewLead) {
+    await runLeadCreatedAutomations(workspaceId, null, leadId); // eventKey makes a replay a no-op
+  } else if (c.existingLead) {
+    await applyRequirementUpdate(workspaceId, leadId, c.existingLead, c.extracted); // fills blanks only
   }
 
-  await writeAudit({
-    workspaceId: input.workspaceId,
-    actorId: sim?.actorId,
-    actorType: sim ? "USER" : "CUSTOMER",
-    providerEventId: sim ? undefined : input.externalId,
-    action: "WHATSAPP_MESSAGE_LOGGED",
-    entity: "WhatsAppMessage",
-    entityId: rowId,
-    metadata: sim ? { direction: "INBOUND", demo: true, simulated: true } : { direction: "INBOUND", webhook: true },
-  });
+  const alreadyLogged =
+    c.redrive && (await prisma.auditLog.count({ where: { workspaceId, action: "WHATSAPP_MESSAGE_LOGGED", entityId: rowId } })) > 0;
+  if (!alreadyLogged) {
+    await writeAudit({
+      workspaceId,
+      actorId: sim?.actorId,
+      actorType: sim ? "USER" : "CUSTOMER",
+      providerEventId: sim ? undefined : await providerEventIdOf(rowId),
+      action: "WHATSAPP_MESSAGE_LOGGED",
+      entity: "WhatsAppMessage",
+      entityId: rowId,
+      metadata: sim ? { direction: "INBOUND", demo: true, simulated: true } : { direction: "INBOUND", webhook: true },
+    });
+  }
 
-  if (lead.ownerId) {
+  if (c.ownerId) {
     await measureExecution("webhook.notify", () =>
-      notify({
-        workspaceId: input.workspaceId,
-        userId: lead.ownerId!,
+      notifyOnce({
+        workspaceId,
+        userId: c.ownerId!,
         type: "WHATSAPP_RECEIVED",
         title: "WhatsApp message received",
         body: "New inbound WhatsApp message",
-        href: `/leads/${lead.id}`,
+        href: `/leads/${leadId}`,
         entityType: "Lead",
-        entityId: lead.id,
+        entityId: leadId,
+        dedupeKey: `inbound:${rowId}`,
       }),
     );
   }
@@ -278,63 +321,170 @@ export async function storeInboundMessage(input: {
   // canonical number, so the suppression holds however the number is spelled later, and the
   // conversational engine is not run at all for this message — replying "you're unsubscribed"
   // would itself be a message to someone who just asked us to stop.
-  if (isOptOutMessage(input.body)) {
-    await recordConsent({
-      workspaceId: input.workspaceId,
-      channel: "WHATSAPP",
-      rawAddress: input.phone,
-      status: "REVOKED",
-      source: "inbound_stop",
-      evidence: `whatsapp message ${rowId}`,
-      leadId: lead.id,
-      actorId: sim?.actorId ?? null,
-    });
-    return "created";
+  if (isOptOutMessage(c.body)) {
+    if (!(await consentSupersedes(c, rowId))) {
+      await recordConsent({
+        workspaceId,
+        channel: "WHATSAPP",
+        rawAddress: c.phone,
+        status: "REVOKED",
+        source: "inbound_stop",
+        evidence: `whatsapp message ${rowId}`,
+        leadId,
+        actorId: sim?.actorId ?? null,
+      });
+    }
+    return;
   }
 
   // An explicit opt-in keyword from the customer is recorded as consent with the message as
   // its evidence; the turn then continues normally.
-  if (isOptInMessage(input.body)) {
+  if (isOptInMessage(c.body) && !(await consentSupersedes(c, rowId))) {
     await recordConsent({
-      workspaceId: input.workspaceId,
+      workspaceId,
       channel: "WHATSAPP",
-      rawAddress: input.phone,
+      rawAddress: c.phone,
       status: "GRANTED",
       source: "inbound_optin_keyword",
       evidence: `whatsapp message ${rowId}`,
-      leadId: lead.id,
+      leadId,
       actorId: sim?.actorId ?? null,
     });
   }
 
-  if (input.extractable) {
-    const detection = detectHandoff(input.body, { previousMessage });
-    if (detection.shouldHandoff) {
-      await measureExecution("webhook.handoff", () =>
-        triggerHandoff({
-          workspaceId: input.workspaceId,
-          leadId: lead.id,
-          detection,
-          triggerMessage: input.body,
-          triggerMessageId: rowId,
-        }),
-      );
-    } else {
-      // Only a non-handoff customer message ever reaches the automatic
-      // conversational reply — never re-entered by our own outbound sends
-      // or by Meta status callbacks, which are handled separately above.
-      await measureExecution("webhook.conversation", () =>
-        runConversationTurn({
-          workspaceId: input.workspaceId,
-          leadId: lead.id,
-          conversationId,
-          messageId: rowId,
-          message: input.body,
-        }),
+  if (!c.extractable) return;
+  const detection = detectHandoff(c.body, { previousMessage: c.previousMessage });
+  if (detection.shouldHandoff) {
+    await measureExecution("webhook.handoff", () =>
+      triggerHandoff({ workspaceId, leadId, detection, triggerMessage: c.body, triggerMessageId: rowId }),
+    );
+    return;
+  }
+  // Only a non-handoff customer message ever reaches the automatic conversational reply — never re-entered by our own
+  // outbound sends or by Meta status callbacks, which are handled separately above. A replay must not answer twice:
+  // any outbound after this inbound (sent, queued or saved draft) means the turn already ran.
+  if (c.redrive && (await outboundFollowsInbound(workspaceId, conversationId, rowId))) return;
+  await measureExecution("webhook.conversation", () =>
+    runConversationTurn({ workspaceId, leadId, conversationId, messageId: rowId, message: c.body }),
+  );
+}
+
+async function providerEventIdOf(rowId: string): Promise<string | undefined> {
+  const row = await prisma.whatsAppMessage.findUnique({ where: { id: rowId }, select: { externalId: true } });
+  return row?.externalId ?? undefined;
+}
+
+/** On a replay, a consent row written for this message — or any later decision for the same number — must not be overwritten. */
+async function consentSupersedes(c: PostCommitContext, rowId: string): Promise<boolean> {
+  if (!c.redrive) return false;
+  const address = consentAddress("WHATSAPP", c.phone);
+  if (!address) return false;
+  const message = await prisma.whatsAppMessage.findUnique({ where: { id: rowId }, select: { sentAt: true } });
+  const existing = await prisma.messagingConsent.findFirst({
+    where: {
+      workspaceId: c.workspaceId,
+      channel: "WHATSAPP",
+      address,
+      OR: [{ evidence: `whatsapp message ${rowId}` }, ...(message ? [{ capturedAt: { gte: message.sentAt } }] : [])],
+    },
+    select: { id: true },
+  });
+  return Boolean(existing);
+}
+
+async function outboundFollowsInbound(workspaceId: string, conversationId: string, inboundRowId: string): Promise<boolean> {
+  const inbound = await prisma.whatsAppMessage.findUnique({ where: { id: inboundRowId }, select: { sentAt: true } });
+  if (!inbound) return false;
+  const later = await prisma.whatsAppMessage.findFirst({
+    where: { workspaceId, conversationId, direction: "OUTBOUND", sentAt: { gt: inbound.sentAt } },
+    select: { id: true },
+  });
+  return Boolean(later);
+}
+
+async function markEventProcessed(provider: string, externalEventId: string) {
+  await prisma.webhookEvent.updateMany({
+    where: { provider, externalEventId, processedAt: null },
+    data: { processedAt: new Date() },
+  });
+}
+
+export const WEBHOOK_RECOVERY_MAX_ATTEMPTS = 5;
+const WEBHOOK_RECOVERY_MIN_AGE_MS = 2 * 60_000;
+
+/**
+ * Re-drives inbound WhatsApp events whose claim committed but whose post-commit steps never finished (process died
+ * between the transaction and the automations / consent / handoff / conversation turn). Meta's own retry cannot help:
+ * the claim makes it return "duplicate". Replays are idempotent per step; an event that keeps failing is logged as
+ * exhausted after WEBHOOK_RECOVERY_MAX_ATTEMPTS and left for a human (it is never silently dropped).
+ */
+export async function recoverStalledWebhookEvents(options: { now?: Date; limit?: number; workspaceId?: string } = {}) {
+  const cutoff = new Date((options.now ?? new Date()).getTime() - WEBHOOK_RECOVERY_MIN_AGE_MS);
+  const stalled = await prisma.webhookEvent.findMany({
+    where: { provider: "whatsapp", processedAt: null, createdAt: { lt: cutoff }, ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}) },
+    orderBy: { createdAt: "asc" },
+    take: options.limit ?? 50,
+  });
+
+  const result = { redriven: 0, failed: 0, exhausted: 0 };
+  for (const event of stalled) {
+    if (event.attempts >= WEBHOOK_RECOVERY_MAX_ATTEMPTS) {
+      result.exhausted += 1;
+      console.error(`[webhook-recovery] EXHAUSTED event=${event.id} externalEventId=${event.externalEventId} workspace=${event.workspaceId} attempts=${event.attempts}`);
+      continue;
+    }
+    // Optimistic claim on the attempt counter: two overlapping sweeps cannot both replay the same event.
+    const claimed = await prisma.webhookEvent.updateMany({
+      where: { id: event.id, processedAt: null, attempts: event.attempts },
+      data: { attempts: { increment: 1 } },
+    });
+    if (claimed.count === 0) continue;
+    try {
+      await redriveInboundEvent(event.workspaceId, event.externalEventId);
+      await markEventProcessed(event.provider, event.externalEventId);
+      result.redriven += 1;
+    } catch (error) {
+      result.failed += 1;
+      console.error(
+        `[webhook-recovery] event=${event.id} attempt=${event.attempts + 1} failed`,
+        error instanceof Error ? error.message.split("\n")[0] : "unknown_error",
       );
     }
   }
-  return "created";
+  return result;
+}
+
+async function redriveInboundEvent(workspaceId: string | null, externalId: string) {
+  if (!workspaceId) return;
+  const message = await prisma.whatsAppMessage.findFirst({
+    where: { workspaceId, provider: "whatsapp-business", externalId, direction: "INBOUND" },
+  });
+  // No persisted message means the claim itself was rolled back or the lead is gone: nothing to replay.
+  if (!message?.leadId) return;
+  const lead = await prisma.lead.findFirst({ where: { id: message.leadId, workspaceId, deletedAt: null } });
+  if (!lead) return;
+
+  const earlier = await prisma.whatsAppMessage.findFirst({
+    where: { workspaceId, leadId: lead.id, direction: "INBOUND", sentAt: { lt: message.sentAt }, id: { not: message.id } },
+    orderBy: { sentAt: "desc" },
+    select: { body: true },
+  });
+  const meta = (message.metadata ?? {}) as Record<string, unknown>;
+  const extractable = !meta.unsupportedType;
+  await runPostCommitSteps({
+    workspaceId,
+    leadId: lead.id,
+    ownerId: lead.ownerId,
+    phone: lead.whatsappNumber ?? lead.phone ?? "",
+    body: message.body,
+    rowId: message.id,
+    extractable,
+    extracted: extractable ? extractRequirement(message.body) : {},
+    isNewLead: !earlier && lead.source === "WHATSAPP_INBOUND",
+    existingLead: lead as unknown as RequirementSnapshot,
+    previousMessage: earlier?.body ?? null,
+    redrive: true,
+  });
 }
 
 export async function processWhatsAppWebhook(

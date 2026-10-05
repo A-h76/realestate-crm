@@ -38,3 +38,15 @@ In the Railway project:
 4. Trigger one run from the dashboard and confirm the log shows `[scheduled-automations] done ... failedWorkspaces=0`.
 
 Until step 4 is done, inactive-lead follow-up in production only happens when a user triggers it manually.
+
+## Webhook recovery (`npm run webhooks:recover`)
+A WhatsApp event is claimed (`WebhookEvent`) in the same transaction that stores the message; automations, consent,
+handoff and the conversation turn run after that commit. If the process dies in between, Meta's retry is rejected as a
+duplicate, so the customer's turn would be lost. `WebhookEvent.processedAt` is stamped when all steps finish;
+`scripts/run-webhook-recovery.ts` replays events still unstamped after 2 minutes (each step is idempotent; a conversation
+turn is skipped if an outbound already follows the inbound). At most 5 attempts per event; after that the event is logged as
+`[webhook-recovery] EXHAUSTED ...` and the run exits 1.
+
+Cadence: every 5 minutes (`*/5 * * * *`, Railway's minimum). Start command: `npm run webhooks:recover`.
+**The Railway cron service for this is a manual step and is not confirmed in production.** Until it exists, a lost turn
+is not recovered.

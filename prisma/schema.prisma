@@ -1099,11 +1099,15 @@ model WebhookEvent {
   externalEventId String
   workspaceId     String?
   createdAt       DateTime @default(now())
+  /** Set when every post-commit step finished; null past ~2 min means the process died mid-way and the sweep re-drives it. */
+  processedAt     DateTime?
+  attempts        Int      @default(0)
 
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([provider, externalEventId])
   @@index([workspaceId, createdAt])
+  @@index([processedAt, createdAt])
 }
 
 model RateLimitBucket {
