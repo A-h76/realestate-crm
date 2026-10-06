@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireAppAccess } from "@/lib/app-access";
 import { roleHasPermission } from "@/lib/authz";
 import { loadTeamHealth } from "@/lib/attention/team-health";
+import { loadJobStatus } from "@/lib/jobs/heartbeat";
 import { PageHeader, SectionHeading } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 
@@ -34,7 +35,7 @@ export default async function TeamHealthPage() {
   // Manager view. The same check gates the data: nothing here is loaded for agents or viewers.
   if (!roleHasPermission(access.role, "leads:assign")) redirect("/dashboard");
 
-  const h = await loadTeamHealth(access.workspaceId, access.workspace.timezone);
+  const [h, jobs] = await Promise.all([loadTeamHealth(access.workspaceId, access.workspace.timezone), loadJobStatus()]);
   const f = h.followUpHealth;
   const d = h.dataHealth;
 
@@ -45,6 +46,22 @@ export default async function TeamHealthPage() {
         title="Team Health"
         description="Where leads are slipping, who is carrying the load, and which records need cleaning up. Every number is counted from live records."
       />
+
+      <section>
+        <SectionHeading>Background jobs</SectionHeading>
+        <p className="meta mb-3">SLA escalation and WhatsApp recovery only work while these run. Platform-wide; each should run every 5 minutes.</p>
+        <ul className="divide-y divide-border rounded-xl border border-border bg-surface text-sm">
+          {jobs.map((j) => (
+            <li key={j.name} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+              <span className="font-medium">{j.label}</span>
+              <span className="flex items-center gap-2">
+                <span className="meta">{j.lastRanAt ? `Last ran ${j.lastRanAt.toLocaleString("en-US", { timeZone: access.workspace.timezone })}` : "Never ran"}</span>
+                <Badge tone={j.state === "ok" ? "success" : "danger"}>{{ ok: "Running", failing: "Last run had errors", stale: "Stopped", never: "Not scheduled" }[j.state]}</Badge>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <section>
         <SectionHeading>Lead response & follow-up</SectionHeading>

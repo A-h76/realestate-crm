@@ -7,10 +7,12 @@
  * Run: npm run webhooks:recover
  */
 import { prisma } from "../src/lib/db";
+import { recordHeartbeat } from "../src/lib/jobs/heartbeat";
 import { recoverStalledWebhookEvents } from "../src/lib/webhooks/whatsapp";
 
 recoverStalledWebhookEvents()
-  .then((r) => {
+  .then(async (r) => {
+    await recordHeartbeat("webhook-recovery", r.failed === 0 && r.exhausted === 0);
     console.log(`[webhook-recovery] done redriven=${r.redriven} failed=${r.failed} exhausted=${r.exhausted}`);
     if (r.failed > 0 || r.exhausted > 0) process.exitCode = 1;
   })

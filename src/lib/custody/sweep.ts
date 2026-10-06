@@ -164,7 +164,8 @@ async function sweepLocked(workspaceId: string, now: Date): Promise<CustodySweep
       }
     }
   }
-  await writeAudit({
+  // Marker only (not a per-run heartbeat, that is JobHeartbeat): written once, on the silent pass.
+  if (silent) await writeAudit({
     workspaceId,
     action: "CUSTODY_SWEEP_RUN",
     entity: "Workspace",

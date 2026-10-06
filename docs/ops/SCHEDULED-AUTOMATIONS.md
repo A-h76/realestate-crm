@@ -65,9 +65,22 @@ Thresholds are constants in `CUSTODY_SLA`. Idempotency: one notification per rec
 (`custody:<flag>:<leadId>:<waitStartMs>:...` via `notifyOnce`), so a re-run, or an overlapping one, never repeats it; a new
 episode (the customer writes again after being answered) notifies again. A per-workspace advisory lock makes overlapping
 runs no-ops. One workspace failing is logged and the rest still run; exit code 1 if any failed. Limits: 500 workable leads
-per workspace per run. The first run in a workspace with an old backlog notifies for every lead already past its SLA.
+per workspace per run. Backlog guard: a breach whose wait started more than 24 h ago (48 h for overdue follow-ups) is never notified, and the first run in a workspace is silent (assigns owners, notifies nobody; marked by a `CUSTODY_SWEEP_RUN` audit row), so enabling the cron on an old backlog does not page anyone.
 
 Cadence: every 5 minutes (`*/5 * * * *`, Railway's minimum). Start command: `npm run custody:sweep` (the npm script passes
 `--conditions=react-server` because the attention loader imports `server-only`).
 **The Railway cron service for this is a manual step and is not confirmed in production.** Until it exists, no SLA breach
 is notified or escalated.
+
+## Required Railway cron services (manual, not done by the repository)
+Create two services from the same repo/image as the web service, each with the web service's `DATABASE_URL` (nothing else):
+
+| Service | Cron Schedule | Start command |
+| --- | --- | --- |
+| `custody-sweep` | `*/5 * * * *` | `npm run custody:sweep` |
+| `webhook-recovery` | `*/5 * * * *` | `npm run webhooks:recover` |
+| `inactive-lead-automations` (already documented above) | `0 3 * * *` | `npm run automations:scheduled` |
+
+Heartbeat: both 5-minute jobs upsert a `JobHeartbeat` row when a run finishes (a run with failures still counts as alive,
+but is shown as "Last run had errors"). **Team Health -> Background jobs** shows "Not scheduled" (never ran), "Running",
+or "Stopped" (no run for 15 minutes). It is deliberately not on `/api/health`, which is public and gates deploys.

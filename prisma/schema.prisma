@@ -1122,3 +1122,10 @@ model RateLimitBucket {
 
   @@id([key, windowStart])
 }
+
+/// Last run of a scheduled job (see src/lib/jobs/heartbeat.ts). Upserted in place.
+model JobHeartbeat {
+  name      String    @id
+  lastRanAt DateTime
+  lastOkAt  DateTime?
+}

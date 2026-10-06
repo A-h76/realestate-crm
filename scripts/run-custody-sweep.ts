@@ -10,6 +10,7 @@
  */
 import { prisma } from "../src/lib/db";
 import { sweepCustody } from "../src/lib/custody/sweep";
+import { recordHeartbeat } from "../src/lib/jobs/heartbeat";
 
 async function main() {
   const workspaces = await prisma.workspace.findMany({ where: { deletedAt: null }, select: { id: true, slug: true } });
@@ -27,6 +28,7 @@ async function main() {
       console.error(`[custody-sweep] workspace=${workspace.slug} failed`, error instanceof Error ? error.message.split("\n")[0] : "unknown_error");
     }
   }
+  await recordHeartbeat("custody-sweep", failed === 0);
   console.log(`[custody-sweep] done workspaces=${workspaces.length} failedWorkspaces=${failed}`);
   if (failed > 0) process.exitCode = 1;
 }
