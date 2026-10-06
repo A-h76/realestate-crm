@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireAppAccess } from "@/lib/app-access";
 import { roleHasPermission } from "@/lib/authz";
 import { loadTeamHealth } from "@/lib/attention/team-health";
+import { LEDGER_SCOPE, loadLeakLedger } from "@/lib/attention/leak-ledger";
 import { loadJobStatus } from "@/lib/jobs/heartbeat";
 import { PageHeader, SectionHeading } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -35,7 +36,11 @@ export default async function TeamHealthPage() {
   // Manager view. The same check gates the data: nothing here is loaded for agents or viewers.
   if (!roleHasPermission(access.role, "leads:assign")) redirect("/dashboard");
 
-  const [h, jobs] = await Promise.all([loadTeamHealth(access.workspaceId, access.workspace.timezone), loadJobStatus()]);
+  const [h, jobs, ledger] = await Promise.all([
+    loadTeamHealth(access.workspaceId, access.workspace.timezone),
+    loadJobStatus(),
+    loadLeakLedger(access.workspaceId),
+  ]);
   const f = h.followUpHealth;
   const d = h.dataHealth;
 
@@ -46,6 +51,60 @@ export default async function TeamHealthPage() {
         title="Team Health"
         description="Where leads are slipping, who is carrying the load, and which records need cleaning up. Every number is counted from live records."
       />
+
+      <section>
+        <SectionHeading>Leak ledger</SectionHeading>
+        <p className="meta mb-3">Last {ledger.windowDays} days. {LEDGER_SCOPE}</p>
+        {ledger.demoWorkspace ? (
+          <p className="rounded-xl border border-border bg-surface px-4 py-6 text-sm text-muted">Demo workspace: seeded and simulated data is never measured.</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <Stat label="Leads in the CRM" value={ledger.leads} />
+              <Stat
+                label="First response within 5 min"
+                value={ledger.firstResponse.withinSla}
+                note={`of ${ledger.firstResponse.measured} with a recorded first contact${ledger.firstResponse.medianMin != null ? ` · median ${ledger.firstResponse.medianMin} min, 90th pct ${ledger.firstResponse.p90Min} min` : ""}`}
+              />
+              <Stat label="Unknown first contact" value={ledger.unknown.count} note="No recorded first contact; no time is guessed" />
+              <Stat label="Unowned right now" value={ledger.unowned.count} bad />
+              <Stat label="Customer waiting for a reply" value={ledger.unanswered.count} bad />
+              <Stat
+                label="SLA breaches notified"
+                value={ledger.sweeper.slaBreaches}
+                note={ledger.sweeper.since ? `Since the sweeper first ran, ${ledger.sweeper.since.toLocaleDateString("en-US", { timeZone: access.workspace.timezone })}` : "Sweeper has never run: breaches are not measured"}
+              />
+              <Stat label="Escalations to managers" value={ledger.sweeper.escalations} />
+            </div>
+            {([
+              ["Unknown first contact", ledger.unknown, "Created"],
+              ["Unowned", ledger.unowned, "Created"],
+              ["Customer waiting", ledger.unanswered, "Waiting since"],
+            ] as const).map(([title, group, atLabel]) =>
+              group.count === 0 ? null : (
+                <div key={title} className="overflow-x-auto rounded-xl border border-border bg-surface">
+                  <div className="px-4 py-2 text-[13px] font-semibold">
+                    {title} ({group.count}
+                    {group.count > group.sample.length ? `, oldest ${group.sample.length} shown` : ""})
+                  </div>
+                  <ul className="divide-y divide-border text-sm">
+                    {group.sample.map((l) => (
+                      <li key={l.id} className="flex flex-wrap justify-between gap-2 px-4 py-2">
+                        <Link href={`/leads/${l.id}`} className="font-medium hover:underline">
+                          {l.name || "Lead"}
+                        </Link>
+                        <span className="meta">
+                          {l.ownerName ?? "No owner"} · {atLabel} {l.at.toLocaleString("en-US", { timeZone: access.workspace.timezone })}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ),
+            )}
+          </div>
+        )}
+      </section>
 
       <section>
         <SectionHeading>Background jobs</SectionHeading>

@@ -1,0 +1,87 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { after, before, describe, it, mock } from "node:test";
+import { prisma } from "../../src/lib/db";
+
+type Load = typeof import("../../src/lib/attention/leak-ledger").loadLeakLedger;
+let loadLeakLedger: Load;
+const MIN = 60_000;
+
+describe("leak ledger", () => {
+  const workspaceIds: string[] = [];
+  let workspaceId: string;
+  let ownerId: string;
+  let userId: string;
+  const now = new Date(Date.now() - 2 * 60 * MIN);
+
+  const lead = (ownerOverride: string | null | undefined, minutesAgo: number, extra: Record<string, unknown> = {}, ws = workspaceId) =>
+    prisma.lead.create({
+      data: {
+        workspaceId: ws,
+        firstName: "L",
+        lastName: randomUUID().slice(0, 4),
+        stage: "NEW",
+        ownerId: ownerOverride === undefined ? ownerId : ownerOverride,
+        createdAt: new Date(now.getTime() - minutesAgo * MIN),
+        ...extra,
+      },
+    });
+
+  before(async () => {
+    mock.module("server-only", { namedExports: {} });
+    loadLeakLedger = (await import("../../src/lib/attention/leak-ledger")).loadLeakLedger;
+    const ws = await prisma.workspace.create({ data: { name: "Ledger", slug: `ledger-${randomUUID()}` } });
+    workspaceId = ws.id;
+    workspaceIds.push(ws.id);
+    const user = await prisma.user.create({ data: { email: `${randomUUID()}@example.test`, name: "Agent", passwordHash: "x" } });
+    userId = user.id;
+    ownerId = user.id;
+    await prisma.workspaceMember.create({ data: { workspaceId, userId, role: "AGENT" } });
+  });
+
+  after(async () => {
+    for (const id of workspaceIds) await prisma.workspace.delete({ where: { id } });
+    await prisma.user.deleteMany({ where: { id: userId } });
+  });
+
+  it("measures real first-contact times, lists null as unknown, and excludes simulated traffic", async () => {
+    const fast = await lead(undefined, 60, { firstContactAt: new Date(now.getTime() - 58 * MIN) }); // 2 min
+    const slow = await lead(undefined, 50, { firstContactAt: new Date(now.getTime() - 20 * MIN) }); // 30 min
+    const unknown = await lead(undefined, 40); // never contacted
+    const unowned = await lead(null, 30);
+    const waiting = await lead(undefined, 25);
+    await prisma.whatsAppMessage.create({
+      data: { workspaceId, conversationId: `lead:${waiting.id}`, direction: "INBOUND", body: "hi", status: "DELIVERED", leadId: waiting.id, provider: "whatsapp-business", sentAt: new Date(now.getTime() - 20 * MIN) },
+    });
+    // Simulated: demo-provider message, and a creation audit tagged simulated. Neither may be counted anywhere.
+    const demoMsg = await lead(null, 90, { firstContactAt: new Date(now.getTime() - 89 * MIN) });
+    await prisma.whatsAppMessage.create({
+      data: { workspaceId, conversationId: `lead:${demoMsg.id}`, direction: "INBOUND", body: "demo", status: "DELIVERED", leadId: demoMsg.id, provider: "demo", sentAt: new Date(now.getTime() - 89 * MIN) },
+    });
+    const tagged = await lead(null, 80);
+    await prisma.auditLog.create({ data: { workspaceId, action: "LEAD_CREATED", entity: "Lead", entityId: tagged.id, metadata: { simulated: true } } });
+    await prisma.auditLog.create({ data: { workspaceId, action: "CUSTODY_SLA_BREACH", entity: "Lead", entityId: tagged.id, occurredAt: now } });
+    await prisma.auditLog.create({ data: { workspaceId, action: "CUSTODY_SLA_BREACH", entity: "Lead", entityId: waiting.id, occurredAt: now } });
+
+    const ledger = await loadLeakLedger(workspaceId, now);
+    assert.equal(ledger.demoWorkspace, false);
+    assert.equal(ledger.leads, 5, "simulated leads are not counted");
+    assert.deepEqual(ledger.firstResponse, { measured: 2, withinSla: 1, medianMin: 2, p90Min: 30 });
+    assert.deepEqual(ledger.unknown.sample.map((l) => l.id).sort(), [unknown.id, unowned.id, waiting.id].sort(), "null firstContactAt is unknown, not a computed time");
+    assert.ok(!ledger.unknown.sample.some((l) => [fast.id, slow.id, demoMsg.id, tagged.id].includes(l.id)));
+    assert.deepEqual(ledger.unowned.sample.map((l) => l.id), [unowned.id]);
+    assert.deepEqual(ledger.unanswered.sample.map((l) => l.id), [waiting.id]);
+    assert.equal(ledger.sweeper.since, null, "sweeper never ran: breaches are unmeasured");
+    assert.equal(ledger.sweeper.slaBreaches, 1, "the simulated lead's breach is excluded");
+  });
+
+  it("a demo workspace measures nothing", async () => {
+    const ws = await prisma.workspace.create({ data: { name: "Demo", slug: `ledger-demo-${randomUUID()}`, isDemo: true } });
+    workspaceIds.push(ws.id);
+    await lead(null, 10, {}, ws.id);
+    const ledger = await loadLeakLedger(ws.id, now);
+    assert.equal(ledger.demoWorkspace, true);
+    assert.equal(ledger.leads, 0);
+    assert.equal(ledger.unowned.count, 0);
+  });
+});

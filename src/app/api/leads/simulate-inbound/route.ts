@@ -67,7 +67,7 @@ export const POST = measuredRoute("POST /api/leads/simulate-inbound", async () =
       whatsappNumber: template.phone,
       source: "FACEBOOK_ADS",
       notes: DEMO_NOTICE,
-    }, { allowDuplicate: true }); // demo-only: the same canned lead may be generated repeatedly
+    }, { allowDuplicate: true, simulated: true }); // demo-only: the same canned lead may be generated repeatedly
 
     return jsonOk(
       {

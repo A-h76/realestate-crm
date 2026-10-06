@@ -23,6 +23,7 @@ export async function createLeadRecord(
   workspaceId: string,
   actorId: string | null,
   body: LeadCreateInput,
+  meta: { simulated?: boolean } = {},
 ) {
   // Every lead leaves intake owned: an explicit owner, else the acting user, else (system intake such as a
   // WhatsApp webhook has no actor) the least-loaded agent. null only when the workspace has no agents,
@@ -81,6 +82,7 @@ export async function createLeadRecord(
       metadata: {
         stage: lead.stage,
         source: lead.source,
+        ...(meta.simulated ? { simulated: true } : {}),
         ...(autoAssigned ? { assignmentStrategy: "least_loaded", reason: "intake_auto_assign" } : {}),
       },
     },
@@ -111,7 +113,7 @@ export async function createLead(
   workspaceId: string,
   actorId: string | null,
   body: LeadCreateInput,
-  options: { allowDuplicate?: boolean } = {},
+  options: { allowDuplicate?: boolean; simulated?: boolean } = {},
 ) {
   const identity = { phone: body.phone, whatsappNumber: body.whatsappNumber, email: body.email };
   const lead = await prisma.$transaction(async (tx) => {
@@ -124,7 +126,7 @@ export async function createLead(
         });
       }
     }
-    return createLeadRecord(tx, workspaceId, actorId, body);
+    return createLeadRecord(tx, workspaceId, actorId, body, { simulated: options.simulated });
   });
 
   await runLeadCreatedAutomations(workspaceId, actorId, lead.id);
