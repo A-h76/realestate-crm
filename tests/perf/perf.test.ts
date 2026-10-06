@@ -57,6 +57,7 @@ describe("external fetch timeouts", () => {
 
 describe("CSV parse timing", () => {
   it("parses 100 and 500 rows within the security row cap", () => {
+    parseLeadCsv(csvForRows(100)); // warm-up: the first parse pays JIT/regex compilation, which is not what this measures
     const t100 = performance.now();
     const parsed100 = parseLeadCsv(csvForRows(100));
     const d100 = performance.now() - t100;
