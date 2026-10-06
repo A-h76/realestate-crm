@@ -97,6 +97,10 @@ describe("custody sweep", () => {
     const after = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     assert.equal(after.ownerId, agentId);
     assert.ok(after.assignedAt);
+    const told = await prisma.notification.findMany({ where: { workspaceId, entityId: lead.id, type: "LEAD_ASSIGNED" } });
+    assert.deepEqual(told.map((n) => n.userId), [agentId], "the new owner is told at assignment");
+    await sweepCustody(workspaceId, { now: new Date(T0 + 3 * MIN) });
+    assert.equal((await prisma.notification.count({ where: { workspaceId, entityId: lead.id, type: "LEAD_ASSIGNED" } })), 1, "deduped");
   });
 
   it("a workspace with no agents escalates an unowned waiting lead straight to its manager", async () => {

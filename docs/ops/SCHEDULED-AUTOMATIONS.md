@@ -57,7 +57,7 @@ for every non-deleted workspace. It reuses the Needs Attention rules (`detectFla
 
 | Flag | Action |
 | --- | --- |
-| `UNASSIGNED` | Assign the least-loaded agent (audit `LEAD_UPDATED`, reason `custody_sweep_auto_assign`). No agents: left unowned. |
+| `UNASSIGNED` | Assign the least-loaded agent (audit `LEAD_UPDATED`, reason `custody_sweep_auto_assign`). The new owner is notified (`LEAD_ASSIGNED`, deduped) unless the lead is older than 24 h or it is the silent first pass. No agents: left unowned. |
 | `RESPOND_NOW` (customer waiting) / `NEW_UNCONTACTED` | Waiting 5 min: notify the owner (`RESPONSE_SLA_BREACH`, audit `CUSTODY_SLA_BREACH`). Waiting 15 min: also notify MANAGER/ADMIN members (OWNER if there are none), audit `CUSTODY_ESCALATED`. No owner: managers are told at 5 min. |
 | `OVERDUE_FOLLOW_UP` | Owner told at once (`FOLLOW_UP_OVERDUE`); managers after 24 h overdue. |
 

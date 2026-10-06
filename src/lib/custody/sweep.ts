@@ -102,6 +102,20 @@ async function sweepLocked(workspaceId: string, now: Date): Promise<CustodySweep
             toState: assignment.agentId,
             metadata: { fields: ["ownerId"], assignmentStrategy: "least_loaded", reason: "custody_sweep_auto_assign" },
           });
+          // Silent pass / old backlog: assign, but do not announce a weeks-old lead as new.
+          if (!silent && now.getTime() - lead.createdAt.getTime() <= CUSTODY_SLA.maxAgeMin * 60_000) {
+            await notifyOnce({
+              workspaceId,
+              userId: assignment.agentId,
+              type: "LEAD_ASSIGNED",
+              title: "New lead assigned to you",
+              body: `${toAttentionLead(lead).name || "A lead"} is yours. Reply within ${CUSTODY_SLA.respondOwnerMin} minutes.`,
+              href: `/leads/${lead.id}`,
+              entityType: "Lead",
+              entityId: lead.id,
+              dedupeKey: `custody:assigned:${lead.id}:${now.getTime()}`,
+            });
+          }
         }
       }
     }
