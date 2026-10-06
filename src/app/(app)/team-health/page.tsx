@@ -92,7 +92,7 @@ export default async function TeamHealthPage() {
                         {r.declared ? "" : " (not declared)"}
                       </span>
                       <span className="meta">
-                        {r.feed === "live" ? "Live feed" : "Manual / CSV only"} ·{" "}
+                        {r.feed === "live" ? "Live feed" : "Manual / CSV only"} &middot;{" "}
                         {r.lastEventAt ? `last lead ${r.lastEventAt.toLocaleDateString("en-US", { timeZone: access.workspace.timezone })}` : "no leads yet"}
                       </span>
                     </li>
