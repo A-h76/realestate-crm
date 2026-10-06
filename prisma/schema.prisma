@@ -416,6 +416,7 @@ model Workspace {
   whatsAppIntegrations   WhatsAppIntegration[]
   webhookEvents          WebhookEvent[]
   messagingConsents      MessagingConsent[]
+  sourceDeclarations SourceDeclaration[]
 }
 
 model WorkspaceBranding {
@@ -1129,4 +1130,15 @@ model JobHeartbeat {
   name      String    @id
   lastRanAt DateTime
   lastOkAt  DateTime?
+}
+
+/// A lead source the workspace declares it gets leads from: the denominator for source coverage (src/lib/sources/coverage.ts).
+model SourceDeclaration {
+  workspaceId String
+  source      LeadSource
+  declaredAt  DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, source])
 }

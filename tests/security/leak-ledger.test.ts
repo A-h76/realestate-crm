@@ -84,4 +84,27 @@ describe("leak ledger", () => {
     assert.equal(ledger.leads, 0);
     assert.equal(ledger.unowned.count, 0);
   });
+
+  it("source coverage: declared vs live, last event from real traffic only", async () => {
+    const ws = await prisma.workspace.create({ data: { name: "Coverage", slug: `ledger-cov-${randomUUID()}` } });
+    workspaceIds.push(ws.id);
+    const before = await loadLeakLedger(ws.id, now);
+    assert.equal(before.coverage.declaredCount, 0, "nothing declared: coverage is unknown, not 100%");
+
+    await prisma.sourceDeclaration.createMany({ data: [{ workspaceId: ws.id, source: "WHATSAPP_INBOUND" }, { workspaceId: ws.id, source: "ZILLOW" }] });
+    await lead(null, 30, { source: "ZILLOW" }, ws.id);
+    await lead(null, 20, { source: "FACEBOOK_ADS" }, ws.id); // produces leads but was never declared
+
+    let cov = (await loadLeakLedger(ws.id, now)).coverage;
+    assert.equal(cov.declaredCount, 2);
+    assert.equal(cov.liveCount, 0, "no WhatsApp integration yet");
+    const zillow = cov.rows.find((r) => r.source === "ZILLOW")!;
+    assert.deepEqual([zillow.declared, zillow.feed, zillow.lastEventAt?.getTime()], [true, "manual_only", now.getTime() - 30 * MIN]);
+    assert.equal(cov.rows.find((r) => r.source === "FACEBOOK_ADS")?.declared, false);
+
+    await prisma.whatsAppIntegration.create({ data: { workspaceId: ws.id, phoneNumberId: `pn-${randomUUID()}` } });
+    cov = (await loadLeakLedger(ws.id, now)).coverage;
+    assert.equal(cov.liveCount, 1);
+    assert.equal(cov.rows.find((r) => r.source === "WHATSAPP_INBOUND")?.feed, "live");
+  });
 });

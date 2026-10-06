@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { loadLeadSignals, localDayWindow, toAttentionLead } from "./loader";
+import { loadSourceCoverage, type SourceCoverage } from "@/lib/sources/coverage";
 import { WORKABLE_STAGES, detectFlags } from "./rules";
 
 export const LEDGER_DAYS = 30;
@@ -26,6 +27,8 @@ export type LeakLedger = {
   unanswered: LedgerGroup;
   /** Breach counts exist only from the sweeper's first run; since = null means it never ran, so breaches are unmeasured. */
   sweeper: { since: Date | null; slaBreaches: number; escalations: number };
+  /** The denominator: declared sources vs sources with a live feed. No declarations = coverage unknown. */
+  coverage: SourceCoverage;
 };
 
 const pct = (sorted: number[], p: number) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)] : null);
@@ -43,6 +46,7 @@ export async function loadLeakLedger(workspaceId: string, now: Date = new Date()
     unowned: empty(),
     unanswered: empty(),
     sweeper: { since: null, slaBreaches: 0, escalations: 0 },
+    coverage: { declaredCount: 0, liveCount: 0, rows: [] },
   };
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { isDemo: true, timezone: true } });
   if (!workspace) return base;
@@ -93,7 +97,8 @@ export async function loadLeakLedger(workspaceId: string, now: Date = new Date()
   });
 
   const notSimulated = { notIn: [...simulated] };
-  const [firstRun, slaBreaches, escalations] = await Promise.all([
+  const [coverage, firstRun, slaBreaches, escalations] = await Promise.all([
+    loadSourceCoverage(workspaceId),
     prisma.auditLog.findFirst({ where: { workspaceId, action: "CUSTODY_SWEEP_RUN" }, orderBy: { occurredAt: "asc" }, select: { occurredAt: true } }),
     prisma.auditLog.count({ where: { workspaceId, action: "CUSTODY_SLA_BREACH", occurredAt: { gte: since }, entityId: notSimulated } }),
     prisma.auditLog.count({ where: { workspaceId, action: "CUSTODY_ESCALATED", occurredAt: { gte: since }, entityId: notSimulated } }),
@@ -112,5 +117,6 @@ export async function loadLeakLedger(workspaceId: string, now: Date = new Date()
     unowned: group(unowned),
     unanswered: group(unanswered),
     sweeper: { since: firstRun?.occurredAt ?? null, slaBreaches, escalations },
+    coverage,
   };
 }

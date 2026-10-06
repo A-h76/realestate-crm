@@ -76,6 +76,30 @@ export default async function TeamHealthPage() {
               />
               <Stat label="Escalations to managers" value={ledger.sweeper.escalations} />
             </div>
+            <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+              <div className="font-semibold">
+                Source coverage:{" "}
+                {ledger.coverage.declaredCount === 0
+                  ? "unknown (no lead sources declared for this workspace)"
+                  : `${ledger.coverage.liveCount} of ${ledger.coverage.declaredCount} declared sources have a live feed`}
+              </div>
+              {ledger.coverage.rows.length > 0 ? (
+                <ul className="mt-2 divide-y divide-border">
+                  {ledger.coverage.rows.map((r) => (
+                    <li key={r.source} className="flex flex-wrap justify-between gap-2 py-1">
+                      <span>
+                        {r.source.replace(/_/g, " ")}
+                        {r.declared ? "" : " (not declared)"}
+                      </span>
+                      <span className="meta">
+                        {r.feed === "live" ? "Live feed" : "Manual / CSV only"} ·{" "}
+                        {r.lastEventAt ? `last lead ${r.lastEventAt.toLocaleDateString("en-US", { timeZone: access.workspace.timezone })}` : "no leads yet"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
             {([
               ["Unknown first contact", ledger.unknown, "Created"],
               ["Unowned", ledger.unowned, "Created"],
