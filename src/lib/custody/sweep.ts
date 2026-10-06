@@ -84,16 +84,20 @@ async function sweepLocked(workspaceId: string, now: Date): Promise<CustodySweep
     let ownerId = lead.ownerId;
 
     if (flags.includes("UNASSIGNED")) {
-      const assignment = await assignLeastLoadedAgent(workspaceId);
-      if (assignment) {
-        const claimed = await prisma.lead.updateMany({
+      // Claim, audit and "this lead is yours" notice commit together (all on `tx`): a crash can neither strand a
+      // silently-owned lead nor lose the notice, because a rerun would see the lead as already owned and never retry.
+      // Silent pass / old backlog: assign but do not announce a weeks-old lead as new.
+      const announce = !silent && now.getTime() - lead.createdAt.getTime() <= CUSTODY_SLA.maxAgeMin * 60_000;
+      const claimedBy = await prisma.$transaction(async (tx) => {
+        const assignment = await assignLeastLoadedAgent(workspaceId, tx);
+        if (!assignment) return null;
+        const claimed = await tx.lead.updateMany({
           where: { id: lead.id, workspaceId, ownerId: null },
           data: { ownerId: assignment.agentId, assignedAt: now },
         });
-        if (claimed.count === 1) {
-          ownerId = assignment.agentId;
-          result.assigned += 1;
-          await writeAudit({
+        if (claimed.count !== 1) return null;
+        await writeAudit(
+          {
             workspaceId,
             action: "LEAD_UPDATED",
             entity: "Lead",
@@ -101,22 +105,34 @@ async function sweepLocked(workspaceId: string, now: Date): Promise<CustodySweep
             fromState: null,
             toState: assignment.agentId,
             metadata: { fields: ["ownerId"], assignmentStrategy: "least_loaded", reason: "custody_sweep_auto_assign" },
+          },
+          tx,
+        );
+        if (announce) {
+          // createMany+skipDuplicates (ON CONFLICT DO NOTHING) so a dedupe hit cannot abort this transaction the way
+          // notifyOnce's caught P2002 would.
+          await tx.notification.createMany({
+            data: [
+              {
+                workspaceId,
+                userId: assignment.agentId,
+                type: "LEAD_ASSIGNED",
+                title: "New lead assigned to you",
+                body: `${attentionLead.name || "A lead"} is yours. Reply within ${CUSTODY_SLA.respondOwnerMin} minutes.`,
+                href: `/leads/${lead.id}`,
+                entityType: "Lead",
+                entityId: lead.id,
+                dedupeKey: `custody:assigned:${lead.id}:${now.getTime()}`,
+              },
+            ],
+            skipDuplicates: true,
           });
-          // Silent pass / old backlog: assign, but do not announce a weeks-old lead as new.
-          if (!silent && now.getTime() - lead.createdAt.getTime() <= CUSTODY_SLA.maxAgeMin * 60_000) {
-            await notifyOnce({
-              workspaceId,
-              userId: assignment.agentId,
-              type: "LEAD_ASSIGNED",
-              title: "New lead assigned to you",
-              body: `${toAttentionLead(lead).name || "A lead"} is yours. Reply within ${CUSTODY_SLA.respondOwnerMin} minutes.`,
-              href: `/leads/${lead.id}`,
-              entityType: "Lead",
-              entityId: lead.id,
-              dedupeKey: `custody:assigned:${lead.id}:${now.getTime()}`,
-            });
-          }
         }
+        return assignment.agentId;
+      });
+      if (claimedBy) {
+        ownerId = claimedBy;
+        result.assigned += 1;
       }
     }
 

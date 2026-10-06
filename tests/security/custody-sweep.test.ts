@@ -103,6 +103,36 @@ describe("custody sweep", () => {
     assert.equal((await prisma.notification.count({ where: { workspaceId, entityId: lead.id, type: "LEAD_ASSIGNED" } })), 1, "deduped");
   });
 
+  it("claim and assignment notice are atomic: if the notice cannot be written, the lead stays unowned and a rerun retries", async () => {
+    const ws = await prisma.workspace.create({ data: { name: "Atomic claim", slug: `sweep-atomic-${randomUUID()}` } });
+    workspaceIds.push(ws.id);
+    const agent = await member(ws.id, "AGENT");
+    const lead = await inboundLead(ws.id, null);
+    await sweepCustody(ws.id, { now: new Date(T0) }); // silent first pass (assigns, so un-assign again)
+    await prisma.lead.update({ where: { id: lead.id }, data: { ownerId: null, assignedAt: null } });
+    const auditCount = () => prisma.auditLog.count({ where: { workspaceId: ws.id, entityId: lead.id, action: "LEAD_UPDATED" } });
+    const auditBefore = await auditCount();
+    // Fault injection: the notice insert for THIS workspace fails, as a crash between claim and notify would.
+    const fn = `fail_notice_${ws.id.replace(/\W/g, "")}`;
+    await prisma.$executeRawUnsafe(
+      `CREATE FUNCTION ${fn}() RETURNS trigger AS $$ BEGIN IF NEW."workspaceId" = '${ws.id}' THEN RAISE EXCEPTION 'injected'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql`,
+    );
+    await prisma.$executeRawUnsafe(`CREATE TRIGGER ${fn} BEFORE INSERT ON "Notification" FOR EACH ROW EXECUTE FUNCTION ${fn}()`);
+    try {
+      await assert.rejects(sweepCustody(ws.id, { now: new Date(T0 + 2 * MIN) }));
+      const mid = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+      assert.equal(mid.ownerId, null, "claim rolled back with the failed notice");
+      assert.equal(await auditCount(), auditBefore, "no orphan audit row");
+    } finally {
+      await prisma.$executeRawUnsafe(`DROP TRIGGER ${fn} ON "Notification"`);
+      await prisma.$executeRawUnsafe(`DROP FUNCTION ${fn}()`);
+    }
+    await sweepCustody(ws.id, { now: new Date(T0 + 3 * MIN) });
+    const after = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    assert.equal(after.ownerId, agent);
+    assert.equal(await prisma.notification.count({ where: { workspaceId: ws.id, entityId: lead.id, type: "LEAD_ASSIGNED" } }), 1, "retry delivers the notice");
+  });
+
   it("a workspace with no agents escalates an unowned waiting lead straight to its manager", async () => {
     const ws = await prisma.workspace.create({ data: { name: "No agents", slug: `sweep-noagent-${randomUUID()}` } });
     workspaceIds.push(ws.id);
