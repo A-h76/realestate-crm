@@ -7,6 +7,7 @@ import { LEDGER_SCOPE, loadLeakLedger } from "@/lib/attention/leak-ledger";
 import { loadJobStatus } from "@/lib/jobs/heartbeat";
 import { PageHeader, SectionHeading } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
+import { sourceLabel } from "@/lib/dashboard-ui";
 
 function Stat({
   label,
@@ -81,14 +82,17 @@ export default async function TeamHealthPage() {
                 Source coverage:{" "}
                 {ledger.coverage.declaredCount === 0
                   ? "unknown (no lead sources declared for this workspace)"
-                  : `${ledger.coverage.liveCount} of ${ledger.coverage.declaredCount} declared sources have a live feed`}
+                  : `${ledger.coverage.liveCount} of ${ledger.coverage.declaredCount} declared sources have a live feed`}{" "}
+                <Link href="/integrations" className="font-normal text-accent-text underline">
+                  {ledger.coverage.declaredCount === 0 ? "Declare sources" : "Edit sources"}
+                </Link>
               </div>
               {ledger.coverage.rows.length > 0 ? (
                 <ul className="mt-2 divide-y divide-border">
                   {ledger.coverage.rows.map((r) => (
                     <li key={r.source} className="flex flex-wrap justify-between gap-2 py-1">
                       <span>
-                        {r.source.replace(/_/g, " ")}
+                        {sourceLabel(r.source)}
                         {r.declared ? "" : " (not declared)"}
                       </span>
                       <span className="meta">

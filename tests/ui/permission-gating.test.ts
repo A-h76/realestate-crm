@@ -35,6 +35,7 @@ describe("role-aware controls", () => {
     const { LeadsTable } = await import("../../src/app/(app)/leads/leads-table");
     const { OpportunitiesClient } = await import("../../src/app/(app)/opportunities/opportunities-client");
     const { WhatsAppThread } = await import("../../src/components/whatsapp/whatsapp-thread");
+    const { SourceDeclarations } = await import("../../src/components/settings/source-declarations");
 
     const analysis = {
       fitScore: 70,
@@ -108,6 +109,15 @@ describe("role-aware controls", () => {
         shown: [
           { text: />Complete</, roles: SALES_ROLES },
           { text: "Start", roles: SALES_ROLES },
+        ],
+      },
+      {
+        name: "SourceDeclarations",
+        build: () => createElement(SourceDeclarations, { declared: ["ZILLOW"] }),
+        shown: [
+          { text: "Save lead sources", roles: ["OWNER", "ADMIN"] },
+          { text: 'type="checkbox"', roles: ["OWNER", "ADMIN"] },
+          { text: "Only the workspace owner or an admin can change this.", roles: ["MANAGER", "AGENT", "VIEWER"] },
         ],
       },
       {

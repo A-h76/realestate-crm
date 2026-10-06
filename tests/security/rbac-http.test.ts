@@ -52,6 +52,7 @@ describe("RBAC at the HTTP boundary", () => {
     const members = await load("../../src/app/api/workspace/members/route");
     const member = await load("../../src/app/api/workspace/members/[userId]/route");
     const workspace = await load("../../src/app/api/workspace/route");
+    const sources = await load("../../src/app/api/workspace/sources/route");
     const search = await load("../../src/app/api/search/route");
     const notifications = await load("../../src/app/api/notifications/route");
     const missing = { params: { id: "does-not-exist" } };
@@ -64,6 +65,7 @@ describe("RBAC at the HTTP boundary", () => {
       { name: "read notifications", allowed: ALL, run: () => call(notifications.GET, "GET") },
       { name: "search", allowed: ALL, run: () => call(search.GET, "GET", { query: "?q=a" }) },
       { name: "read workspace settings", allowed: ALL, run: () => call(workspace.GET, "GET") },
+      { name: "read lead source coverage", allowed: ALL, run: () => call(sources.GET, "GET") },
       { name: "read a WhatsApp conversation", allowed: ALL, run: () => call(waConv.GET, "GET", missing) },
 
       { name: "create lead", allowed: SALES, run: () => call(leads.POST, "POST", { body: {} }) },
@@ -89,6 +91,7 @@ describe("RBAC at the HTTP boundary", () => {
       { name: "change a member's role", allowed: ADMINS, run: () => call(member.PATCH, "PATCH", { params: { userId: "nobody" }, body: { role: "AGENT" } }) },
       { name: "remove a member", allowed: ADMINS, run: () => call(member.DELETE, "DELETE", { params: { userId: "nobody" } }) },
       { name: "edit workspace settings / branding", allowed: ADMINS, run: () => call(workspace.PATCH, "PATCH", { body: {} }) },
+      { name: "declare lead sources", allowed: ADMINS, run: () => call(sources.PUT, "PUT", { body: {} }) },
     ];
   });
 

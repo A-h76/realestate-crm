@@ -251,6 +251,7 @@ enum AuditAction {
   CUSTODY_SLA_BREACH
   CUSTODY_ESCALATED
   CUSTODY_SWEEP_RUN
+  SOURCES_DECLARED
 }
 
 /// Who caused an audit event. SYSTEM = our own code with no human or AI behind it (scheduler, intake).

@@ -34,6 +34,9 @@ export async function SettingsView({
   const invitations = canManageMembers
     ? await invitationStatesFor((workspace?.members ?? []).map((m) => m.userId))
     : new Map();
+  const declaredSources = tabs.includes("integrations")
+    ? (await prisma.sourceDeclaration.findMany({ where: { workspaceId: access.workspaceId }, select: { source: true } })).map((d) => d.source)
+    : [];
   const calendar = getCalendarProvider();
   const whatsapp = getWhatsAppProvider();
   const waStatus = whatsappStatus();
@@ -88,6 +91,7 @@ export async function SettingsView({
           whatsappMode: waStatus.mode,
           whatsappDetail: describeWhatsAppStatus(waStatus),
         }}
+        declaredSources={declaredSources}
       />
     </div>
   );

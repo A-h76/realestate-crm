@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ASSIGNABLE_ROLES, memberChangeDenial } from "@/lib/authz";
 import { US_TIME_ZONES as US_TIME_ZONE_OPTIONS } from "@/lib/validations/common";
-import type { WorkspaceRole } from "@prisma/client";
+import type { LeadSource, WorkspaceRole } from "@prisma/client";
+import { SourceDeclarations } from "@/components/settings/source-declarations";
 
 export type BrandingFields = {
   companyName: string;
@@ -31,6 +32,7 @@ export function SettingsClient({
   members,
   stages,
   integrations,
+  declaredSources = [],
   initialTab = "branding",
   tabs = ["workspace", "pipeline", "team", "integrations", "branding"],
 }: {
@@ -56,6 +58,7 @@ export function SettingsClient({
     whatsappMode: "live" | "misconfigured" | "demo" | "disabled";
     whatsappDetail: string;
   };
+  declaredSources?: LeadSource[];
   /** Which section is open first (tests render the Team section directly). */
   initialTab?: Tab;
   /** Sections shown in the section switcher; /team and /integrations each render a single section. */
@@ -461,6 +464,7 @@ export function SettingsClient({
               {" · internal CRM calendar. Events are not synced with Google Calendar or any other external calendar."}
             </p>
           </div>
+          <SourceDeclarations declared={declaredSources} />
           <div>
             <div className="text-sm font-medium">Not available yet</div>
             <p className="mt-1 text-sm text-muted">
