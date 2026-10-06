@@ -47,6 +47,9 @@ describe("custody sweep", () => {
     workspaceIds.push(ws.id);
     agentId = await member(workspaceId, "AGENT");
     managerId = await member(workspaceId, "MANAGER");
+    // The first sweep of a workspace is silent by design; burn it so the tests below run live.
+    const first = await sweepCustody(workspaceId, { now: new Date(T0) });
+    assert.equal(first?.silent, true);
   });
 
   after(async () => {
@@ -101,12 +104,40 @@ describe("custody sweep", () => {
     workspaceIds.push(ws.id);
     const manager = await member(ws.id, "MANAGER");
     const lead = await inboundLead(ws.id, null);
+    await sweepCustody(ws.id, { now: new Date(T0) }); // silent first pass
     const result = await sweepCustody(ws.id, { now: new Date(T0 + 6 * MIN) });
     assert.equal(result?.assigned, 0);
     const notes = await prisma.notification.findMany({ where: { workspaceId: ws.id, entityId: lead.id } });
     assert.deepEqual(notes.map((n) => n.userId), [manager]);
     const esc = await prisma.auditLog.findFirstOrThrow({ where: { workspaceId: ws.id, entityId: lead.id, action: "CUSTODY_ESCALATED" } });
     assert.equal((esc.metadata as { ownerless: boolean }).ownerless, true);
+  });
+
+  it("backlog guard: a breach older than the age cutoff is never notified, a fresh one is", async () => {
+    const day = 24 * 60 * MIN;
+    const old = await inboundLead(workspaceId, agentId); // waiting since T0
+    const now = new Date(T0 + day + 30 * MIN);
+    const fresh = await inboundLead(workspaceId, agentId);
+    await prisma.whatsAppMessage.updateMany({ where: { leadId: fresh.id }, data: { sentAt: new Date(now.getTime() - 6 * MIN) } });
+    await sweepCustody(workspaceId, { now });
+    assert.equal((await notesFor(old.id)).length, 0, "weeks-old waits are history");
+    assert.equal((await notesFor(fresh.id)).length, 1, "a fresh breach still pages the owner");
+  });
+
+  it("first run in a workspace is silent, the second is live", async () => {
+    const ws = await prisma.workspace.create({ data: { name: "Silent first", slug: `sweep-silent-${randomUUID()}` } });
+    workspaceIds.push(ws.id);
+    const agent = await member(ws.id, "AGENT");
+    const lead = await inboundLead(ws.id, agent);
+    const now = new Date(T0 + 10 * MIN);
+    const first = await sweepCustody(ws.id, { now });
+    assert.equal(first?.silent, true);
+    assert.equal(first?.breaches, 0);
+    assert.equal((await prisma.notification.count({ where: { workspaceId: ws.id, entityId: lead.id } })), 0);
+    const second = await sweepCustody(ws.id, { now: new Date(now.getTime() + MIN) });
+    assert.equal(second?.silent, false);
+    assert.equal(second?.breaches, 1);
+    assert.equal((await prisma.notification.count({ where: { workspaceId: ws.id, entityId: lead.id } })), 1);
   });
 
   it("does nothing while another run holds the workspace lock", async () => {

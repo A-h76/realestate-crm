@@ -250,6 +250,7 @@ enum AuditAction {
   LEAD_FIRST_CONTACT
   CUSTODY_SLA_BREACH
   CUSTODY_ESCALATED
+  CUSTODY_SWEEP_RUN
 }
 
 /// Who caused an audit event. SYSTEM = our own code with no human or AI behind it (scheduler, intake).

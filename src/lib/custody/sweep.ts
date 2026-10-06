@@ -15,12 +15,18 @@ export const CUSTODY_SLA = {
   /** OVERDUE_FOLLOW_UP only fires once the due date is before today, so the owner hears at once. */
   overdueOwnerMin: 0,
   overdueEscalateMin: 24 * 60,
+  /**
+   * Backlog guard: a breach whose trigger is older than this is history, not an emergency, and is never notified.
+   * The overdue window must outlast overdueEscalateMin or managers could never be told.
+   */
+  maxAgeMin: 24 * 60,
+  overdueMaxAgeMin: 48 * 60,
 };
 
 const LEAD_LIMIT = 500;
 const BREACH_FLAGS = ["RESPOND_NOW", "NEW_UNCONTACTED", "OVERDUE_FOLLOW_UP"] as const;
 
-export type CustodySweepResult = { leadsChecked: number; assigned: number; breaches: number; escalations: number };
+export type CustodySweepResult = { leadsChecked: number; assigned: number; breaches: number; escalations: number; silent: boolean };
 
 /**
  * Per-workspace custody sweep. Holds a Postgres advisory lock so overlapping runs (second instance, doubled cron) do
@@ -41,7 +47,13 @@ export async function sweepCustody(workspaceId: string, options: { now?: Date } 
 }
 
 async function sweepLocked(workspaceId: string, now: Date): Promise<CustodySweepResult> {
-  const result: CustodySweepResult = { leadsChecked: 0, assigned: 0, breaches: 0, escalations: 0 };
+  // First pass per workspace is silent: assigns and records state, notifies nobody, so an existing backlog is not
+  // announced as a flood of breaches on day one. The CUSTODY_SWEEP_RUN row written at the end is the marker.
+  const silent = !(await prisma.auditLog.findFirst({
+    where: { workspaceId, action: "CUSTODY_SWEEP_RUN" },
+    select: { id: true },
+  }));
+  const result: CustodySweepResult = { leadsChecked: 0, assigned: 0, breaches: 0, escalations: 0, silent };
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { timezone: true } });
   if (!workspace) return result;
 
@@ -94,7 +106,7 @@ async function sweepLocked(workspaceId: string, now: Date): Promise<CustodySweep
       }
     }
 
-    for (const flag of BREACH_FLAGS) {
+    for (const flag of silent ? [] : BREACH_FLAGS) {
       if (!flags.includes(flag)) continue;
       const since =
         flag === "RESPOND_NOW" ? s.lastInbound?.at : flag === "NEW_UNCONTACTED" ? lead.createdAt : followUpDate(attentionLead, s);
@@ -104,6 +116,7 @@ async function sweepLocked(workspaceId: string, now: Date): Promise<CustodySweep
       const escalateAfter = overdue ? CUSTODY_SLA.overdueEscalateMin : CUSTODY_SLA.respondEscalateMin;
       const waitedMin = (now.getTime() - since.getTime()) / 60_000;
       if (waitedMin < ownerAfter) continue;
+      if (waitedMin > (overdue ? CUSTODY_SLA.overdueMaxAgeMin : CUSTODY_SLA.maxAgeMin)) continue;
 
       const name = attentionLead.name || "A lead";
       const waited = elapsedLabel(since, now);
@@ -151,5 +164,13 @@ async function sweepLocked(workspaceId: string, now: Date): Promise<CustodySweep
       }
     }
   }
+  await writeAudit({
+    workspaceId,
+    action: "CUSTODY_SWEEP_RUN",
+    entity: "Workspace",
+    entityId: workspaceId,
+    occurredAt: now,
+    metadata: { ...result },
+  });
   return result;
 }
