@@ -37,6 +37,8 @@ export type CsvLeadRow = {
   propertyTypePref?: z.infer<typeof propertyTypeEnum>;
   propertyPurpose?: z.infer<typeof propertyPurposeEnum>;
   notes?: string;
+  /** When the lead really arrived (ISO date or datetime). Starts the response-time clock; absent = import time. */
+  receivedAt?: Date;
 };
 
 export type CsvIssue = { row: number; field: string; message: string };
@@ -106,7 +108,19 @@ function headerIndex(headers: string[]) {
   };
 }
 
-export function parseLeadCsv(text: string): {
+/** Past, real, ISO-8601. Date-only values mean 00:00 UTC. Anything else is rejected rather than guessed. */
+function parseReceivedAt(raw: string, now: Date): Date | "invalid" | "future" {
+  if (!/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/.test(raw)) return "invalid";
+  // V8 rolls 2026-02-31 over to March 3rd; a calendar-invalid day is an error, not a different day.
+  const [y, m, day] = raw.slice(0, 10).split("-").map(Number);
+  const cal = new Date(Date.UTC(y, m - 1, day));
+  if (cal.getUTCMonth() !== m - 1 || cal.getUTCDate() !== day) return "invalid";
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00Z` : raw.replace(" ", "T"));
+  if (Number.isNaN(d.getTime())) return "invalid";
+  return d.getTime() > now.getTime() + 5 * 60_000 ? "future" : d;
+}
+
+export function parseLeadCsv(text: string, now: Date = new Date()): {
   valid: CsvLeadRow[];
   invalid: CsvIssue[];
   duplicatesInFile: number[];
@@ -206,6 +220,21 @@ export function parseLeadCsv(text: string): {
       return;
     }
 
+    let receivedAt: Date | undefined;
+    const receivedRaw = get("receivedat");
+    if (receivedRaw) {
+      const parsed = parseReceivedAt(receivedRaw, now);
+      if (parsed === "invalid" || parsed === "future") {
+        invalid.push({
+          row,
+          field: "receivedAt",
+          message: parsed === "future" ? "receivedAt is in the future." : `receivedAt must be an ISO date or datetime (e.g. 2026-10-01 or 2026-10-01T14:30:00Z): ${receivedRaw}`,
+        });
+        return;
+      }
+      receivedAt = parsed;
+    }
+
     if (overflow) return;
 
     const key = (email || whatsappNumber || `${firstName}:${get("lastname")}`).toLowerCase();
@@ -234,6 +263,7 @@ export function parseLeadCsv(text: string): {
       propertyTypePref: typeRaw ? (typeRaw.toUpperCase() as CsvLeadRow["propertyTypePref"]) : undefined,
       propertyPurpose: purposeRaw ? (purposeRaw.toUpperCase() as CsvLeadRow["propertyPurpose"]) : undefined,
       notes: get("notes") || undefined,
+      receivedAt,
     });
   });
 

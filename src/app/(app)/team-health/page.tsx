@@ -65,7 +65,7 @@ export default async function TeamHealthPage() {
               <Stat
                 label="First response within 5 min"
                 value={ledger.firstResponse.withinSla}
-                note={`of ${ledger.firstResponse.measured} with a recorded first contact${ledger.firstResponse.medianMin != null ? ` · median ${ledger.firstResponse.medianMin} min, 90th pct ${ledger.firstResponse.p90Min} min` : ""}`}
+                note={`of ${ledger.firstResponse.measured} with a recorded first contact${ledger.firstResponse.medianMin != null ? ` · median ${ledger.firstResponse.medianMin} min, 90th pct ${ledger.firstResponse.p90Min} min` : ""}${ledger.firstResponse.measured > 0 ? ` · clock: ${ledger.firstResponse.clock.receivedAt} from received date, ${ledger.firstResponse.clock.createdAt} from time added to CRM` : ""}`}
               />
               <Stat label="Unknown first contact" value={ledger.unknown.count} note="No recorded first contact; no time is guessed" />
               <Stat label="Unowned right now" value={ledger.unowned.count} bad />

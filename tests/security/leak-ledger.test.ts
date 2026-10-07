@@ -66,13 +66,31 @@ describe("leak ledger", () => {
     const ledger = await loadLeakLedger(workspaceId, now);
     assert.equal(ledger.demoWorkspace, false);
     assert.equal(ledger.leads, 5, "simulated leads are not counted");
-    assert.deepEqual(ledger.firstResponse, { measured: 2, withinSla: 1, medianMin: 2, p90Min: 30 });
+    assert.deepEqual(ledger.firstResponse, { measured: 2, withinSla: 1, medianMin: 2, p90Min: 30, clock: { receivedAt: 0, createdAt: 2 } });
     assert.deepEqual(ledger.unknown.sample.map((l) => l.id).sort(), [unknown.id, unowned.id, waiting.id].sort(), "null firstContactAt is unknown, not a computed time");
     assert.ok(!ledger.unknown.sample.some((l) => [fast.id, slow.id, demoMsg.id, tagged.id].includes(l.id)));
     assert.deepEqual(ledger.unowned.sample.map((l) => l.id), [unowned.id]);
     assert.deepEqual(ledger.unanswered.sample.map((l) => l.id), [waiting.id]);
     assert.equal(ledger.sweeper.since, null, "sweeper never ran: breaches are unmeasured");
     assert.equal(ledger.sweeper.slaBreaches, 1, "the simulated lead's breach is excluded");
+  });
+
+  it("an imported lead is timed from receivedAt, not from the import; a contact before receivedAt is unknown", async () => {
+    const ws = await prisma.workspace.create({ data: { name: "Clock", slug: `ledger-clock-${randomUUID()}` } });
+    workspaceIds.push(ws.id);
+    // Added to the CRM 60 min ago but really received 3 days earlier; first contact 55 min ago.
+    const received = new Date(now.getTime() - 3 * 24 * 60 * MIN);
+    const imported = await lead(null, 60, { receivedAt: received, firstContactAt: new Date(now.getTime() - 55 * MIN) }, ws.id);
+    // Same shape without receivedAt: createdAt is the clock, so this one is a 5 minute response.
+    await lead(null, 60, { firstContactAt: new Date(now.getTime() - 55 * MIN) }, ws.id);
+    // Contact recorded before the claimed receipt time is incoherent: unknown, never a negative or invented time.
+    const incoherent = await lead(null, 60, { receivedAt: new Date(now.getTime() - 10 * MIN), firstContactAt: new Date(now.getTime() - 55 * MIN) }, ws.id);
+
+    const r = (await loadLeakLedger(ws.id, now)).firstResponse;
+    assert.equal(r.measured, 2);
+    assert.equal(r.withinSla, 1, "only the createdAt-clocked lead beat 5 minutes; the import took ~3 days");
+    assert.deepEqual(r.clock, { receivedAt: 1, createdAt: 1 });
+    assert.ok(imported.id && incoherent.id);
   });
 
   it("a demo workspace measures nothing", async () => {

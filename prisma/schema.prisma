@@ -626,6 +626,8 @@ model Lead {
   assignedAt           DateTime?
   /// First real outreach to the lead (message that went out, or a completed call/email/meeting). null = none yet / unknown.
   firstContactAt       DateTime?
+  /// When the lead really reached the business, if that differs from createdAt (CSV imports of older leads). Response-time clock start = receivedAt ?? createdAt.
+  receivedAt           DateTime?
   nextAction           String?
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt

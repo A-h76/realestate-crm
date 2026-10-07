@@ -8,6 +8,26 @@ function csv(...rows: string[]) {
   return [HEADER, ...rows].join("\n");
 }
 
+describe("parseLeadCsv - receivedAt (response-time clock start)", () => {
+  const NOW = new Date("2026-10-08T12:00:00Z");
+  const parse = (...rows: string[]) => parseLeadCsv(["firstName,email,receivedAt", ...rows].join("\n"), NOW);
+
+  it("accepts date-only (00:00 UTC), datetime with zone, and a blank cell (falls back to import time)", () => {
+    const r = parse("A,a@x.example,2026-10-01", "B,b@x.example,2026-10-01T14:30:00-04:00", "C,c@x.example,");
+    assert.deepEqual(r.invalid, []);
+    assert.equal(r.valid[0].receivedAt?.toISOString(), "2026-10-01T00:00:00.000Z");
+    assert.equal(r.valid[1].receivedAt?.toISOString(), "2026-10-01T18:30:00.000Z");
+    assert.equal(r.valid[2].receivedAt, undefined);
+  });
+
+  it("rejects unparseable, ambiguous and future values on their row instead of guessing", () => {
+    const r = parse("A,a@x.example,10/01/2026", "B,b@x.example,yesterday", "C,c@x.example,2026-10-09", "D,d@x.example,2026-02-31");
+    assert.equal(r.valid.length, 0);
+    assert.deepEqual(r.invalid.map((i) => [i.row, i.field]), [[2, "receivedAt"], [3, "receivedAt"], [4, "receivedAt"], [5, "receivedAt"]]);
+    assert.match(r.invalid[2].message, /future/);
+  });
+});
+
 describe("parseLeadCsv — US phone numbers are normalized on the way in", () => {
   it("stores the canonical E.164 form whatever spelling the file used", () => {
     const result = parseLeadCsv(

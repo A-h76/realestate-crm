@@ -21,7 +21,14 @@ export type LeakLedger = {
   demoWorkspace: boolean;
   leads: number;
   /** Only leads with a recorded firstContactAt. Everyone else is in `unknown`, never given a computed time. */
-  firstResponse: { measured: number; withinSla: number; medianMin: number | null; p90Min: number | null };
+  firstResponse: {
+    measured: number;
+    withinSla: number;
+    medianMin: number | null;
+    p90Min: number | null;
+    /** Which clock started each measured time: the lead's own receivedAt (e.g. CSV column) or, absent that, createdAt. */
+    clock: { receivedAt: number; createdAt: number };
+  };
   unknown: LedgerGroup;
   unowned: LedgerGroup;
   unanswered: LedgerGroup;
@@ -41,7 +48,7 @@ export async function loadLeakLedger(workspaceId: string, now: Date = new Date()
     windowDays: LEDGER_DAYS,
     demoWorkspace: false,
     leads: 0,
-    firstResponse: { measured: 0, withinSla: 0, medianMin: null, p90Min: null },
+    firstResponse: { measured: 0, withinSla: 0, medianMin: null, p90Min: null, clock: { receivedAt: 0, createdAt: 0 } },
     unknown: empty(),
     unowned: empty(),
     unanswered: empty(),
@@ -73,10 +80,12 @@ export async function loadLeakLedger(workspaceId: string, now: Date = new Date()
   const real = rows.filter((l) => !simulated.has(l.id));
 
   const inWindow = real.filter((l) => l.createdAt >= since);
-  const hasContact = (l: (typeof real)[number]) => l.firstContactAt !== null && l.firstContactAt >= l.createdAt;
-  const times = inWindow
-    .filter(hasContact)
-    .map((l) => l.firstContactAt!.getTime() - l.createdAt.getTime())
+  // Response clock starts when the lead really arrived (receivedAt), else when it entered the CRM (createdAt).
+  const clockStart = (l: (typeof real)[number]) => l.receivedAt ?? l.createdAt;
+  const hasContact = (l: (typeof real)[number]) => l.firstContactAt !== null && l.firstContactAt >= clockStart(l);
+  const measuredLeads = inWindow.filter(hasContact);
+  const times = measuredLeads
+    .map((l) => l.firstContactAt!.getTime() - clockStart(l).getTime())
     .sort((a, b) => a - b);
   const toMin = (ms: number | null) => (ms == null ? null : Math.round(ms / 6_000) / 10);
 
@@ -112,6 +121,10 @@ export async function loadLeakLedger(workspaceId: string, now: Date = new Date()
       withinSla: times.filter((t) => t <= SLA_MS).length,
       medianMin: toMin(pct(times, 0.5)),
       p90Min: toMin(pct(times, 0.9)),
+      clock: {
+        receivedAt: measuredLeads.filter((l) => l.receivedAt).length,
+        createdAt: measuredLeads.filter((l) => !l.receivedAt).length,
+      },
     },
     unknown: group(inWindow.filter((l) => !hasContact(l)).map((l) => ({ id: l.id, name: nameOf(l), at: l.createdAt, ownerName: l.owner?.name ?? null }))),
     unowned: group(unowned),

@@ -183,6 +183,7 @@ export const POST = measuredRoute("POST /api/leads/csv", async (request) => {
                 propertyTypePref: row.propertyTypePref,
                 propertyPurpose: row.propertyPurpose,
                 notes: row.notes,
+                receivedAt: row.receivedAt,
                 ownerId: userId,
               },
             ];
