@@ -21,6 +21,8 @@ describe("outbound authorization gate", () => {
   before(async () => {
     installSessionMock();
     t = await createTenant("outbound-gate");
+    // These tests are about control/mode/consent; timing rules are covered in outbound-timing.test.ts, and must not make this suite depend on the wall clock.
+    await prisma.workspace.update({ where: { id: t.workspaceId }, data: { quietHoursStartMin: 0, quietHoursEndMin: 0, autoMessageCap: 1000 } });
   });
   after(async () => {
     await destroyTenant(t);

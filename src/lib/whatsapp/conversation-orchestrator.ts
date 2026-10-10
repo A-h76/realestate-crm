@@ -9,6 +9,7 @@ import { applyRequirementUpdate, type RequirementSnapshot } from "./extract-requ
 import { triggerHandoff } from "./handoff-event";
 import { markFirstContact } from "@/lib/leads/custody";
 import {
+  DEFERRABLE_BLOCKS,
   auditOutboundBlock,
   authorizeOutbound,
   hasHumanTakenOver,
@@ -140,11 +141,12 @@ export async function runConversationTurn(input: {
       intent: "AI",
       channel: "WHATSAPP",
       reason: authorization.reason,
+      detail: authorization.detail,
     });
     // A refused send is still worth keeping: in DRAFT mode (the default) the reply the
     // assistant would have sent is saved for a human to review, edit and send. A consent
     // block or a take-over produces no draft — there is nothing a human should send here.
-    if (authorization.reason !== "ai_mode_draft") {
+    if (!DEFERRABLE_BLOCKS.includes(authorization.reason)) {
       return { decision, sent: null, blocked: authorization.reason };
     }
     const draft = await provider.draftMessage(input.workspaceId, {

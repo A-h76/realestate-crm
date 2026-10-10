@@ -389,6 +389,12 @@ model Workspace {
   /** DRAFT means AI never sends on its own; promotion to AUTO is a deliberate per-workspace act. */
   aiMode      AiMode    @default(DRAFT)
   isDemo      Boolean   @default(false)
+  /// Outbound gate (AI/MARKETING only): no sends between these local times (minutes after midnight; start > end wraps midnight; equal = off).
+  quietHoursStartMin  Int @default(1260)
+  quietHoursEndMin    Int @default(480)
+  /// At most this many automated (no human sender) messages to one recipient per rolling autoMessageCapHours. 0 = block all automated sends.
+  autoMessageCap      Int @default(3)
+  autoMessageCapHours Int @default(24)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
@@ -865,6 +871,8 @@ model MessagingConsent {
   /** How this status was established, e.g. "inbound_stop", "web_form", "csv_attestation". */
   source      String
   evidence    String?
+  /// IANA zone for this recipient when known; null = the workspace timezone is assumed.
+  timezone    String?
   capturedAt  DateTime         @default(now())
   revokedAt   DateTime?
   leadId      String?

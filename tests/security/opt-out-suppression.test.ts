@@ -45,7 +45,7 @@ describe("inbound opt-out suppression (end to end)", () => {
     process.env.WHATSAPP_APP_SECRET = SECRET;
     delete process.env.WHATSAPP_BUSINESS_ENABLED;
     const workspace = await prisma.workspace.create({
-      data: { name: "Opt Out Test", slug: `opt-out-test-${randomUUID()}`, aiMode: "AUTO" },
+      data: { name: "Opt Out Test", slug: `opt-out-test-${randomUUID()}`, aiMode: "AUTO", quietHoursStartMin: 0, quietHoursEndMin: 0, autoMessageCap: 1000 },
     });
     workspaceId = workspace.id;
     phoneNumberId = `phone-${randomUUID()}`;

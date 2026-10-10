@@ -249,7 +249,7 @@ describe("POST /api/whatsapp/simulate-inbound", () => {
   it("the same message is actually sent once the workspace opts into AUTO", async () => {
     demoOn();
     actAs(t.users.MANAGER);
-    await prisma.workspace.update({ where: { id: t.workspaceId }, data: { aiMode: "AUTO" } });
+    await prisma.workspace.update({ where: { id: t.workspaceId }, data: { aiMode: "AUTO", quietHoursStartMin: 0, quietHoursEndMin: 0, autoMessageCap: 1000 } });
     try {
       const fresh = (await prisma.lead.create({ data: { workspaceId: t.workspaceId, firstName: "AutoChat", whatsappNumber: "+14155550206" } })).id;
       const res = await simulate({ conversationId: `lead:${fresh}`, leadId: fresh, body: "I am looking for a house to rent in Logan Square" });

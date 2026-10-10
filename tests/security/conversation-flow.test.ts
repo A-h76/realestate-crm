@@ -51,7 +51,7 @@ describe("Conversational intelligence — full WhatsApp flow", () => {
     const workspace = await prisma.workspace.create({
       // aiMode AUTO is set explicitly: this suite exercises the automatic reply engine, and
       // DRAFT (the product default) deliberately sends nothing. See the DRAFT-mode test below.
-      data: { name: "Conversation Flow Test", slug: `conv-flow-test-${randomUUID()}`, aiMode: "AUTO" },
+      data: { name: "Conversation Flow Test", slug: `conv-flow-test-${randomUUID()}`, aiMode: "AUTO", quietHoursStartMin: 0, quietHoursEndMin: 0, autoMessageCap: 1000 }, // timing rules have their own tests (outbound-timing); keep this suite independent of the wall clock
     });
     workspaceId = workspace.id;
     phoneNumberId = `phone-${randomUUID()}`;

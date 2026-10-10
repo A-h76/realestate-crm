@@ -53,6 +53,7 @@ export const POST = measuredRoute("POST /api/whatsapp/messages", async (request:
           intent: "HUMAN",
           channel: "WHATSAPP",
           reason: authorization.reason,
+          detail: authorization.detail,
           actorId: userId,
         });
         throw new ApiError(409, authorization.message, undefined, { blockedReason: authorization.reason });

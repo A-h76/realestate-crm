@@ -45,14 +45,14 @@ export async function getConsentStatus(
   workspaceId: string,
   channel: MessagingChannel,
   rawAddress: string | null | undefined,
-): Promise<{ status: ConsentStatus; address: string | null }> {
+): Promise<{ status: ConsentStatus; address: string | null; timezone: string | null }> {
   const address = consentAddress(channel, rawAddress);
-  if (!address) return { status: "UNKNOWN", address: null };
+  if (!address) return { status: "UNKNOWN", address: null, timezone: null };
   const record = await prisma.messagingConsent.findUnique({
     where: { workspaceId_channel_address: { workspaceId, channel, address } },
-    select: { status: true },
+    select: { status: true, timezone: true },
   });
-  return { status: record?.status ?? "UNKNOWN", address };
+  return { status: record?.status ?? "UNKNOWN", address, timezone: record?.timezone ?? null };
 }
 
 /**
