@@ -4,13 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Ellipsis, Menu, X } from "lucide-react";
-import { AppSidebar, CommandCenter, isNavActive, primaryNav, useCommandOpen } from "@/components/layout/app-sidebar";
+import { AppSidebar, CommandCenter, isNavActive, navLabel, primaryNav, useCommandOpen } from "@/components/layout/app-sidebar";
 import { NotificationsMenu } from "@/components/layout/notifications-menu";
 import { initials } from "@/lib/dashboard-ui";
 import { prettyRole } from "@/lib/format";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 import { DemoBanner, DemoModeProvider } from "@/components/demo-banner";
 import { cn } from "@/lib/utils";
+import type { ShellProfile } from "@/lib/workspace/profile";
 
 export function AppShell({
   userName,
@@ -18,6 +19,7 @@ export function AppShell({
   workspaceName,
   companyName,
   timeZone,
+  profile,
   calendarDemo,
   whatsappDemo,
   demoMode = false,
@@ -30,6 +32,7 @@ export function AppShell({
   /** The workspace's configured IANA time zone — a real setting, shown so the user can see
    * which zone the dates and SLA clocks on screen are in. */
   timeZone: string;
+  profile: ShellProfile;
   calendarDemo: boolean;
   whatsappDemo: boolean;
   demoMode?: boolean;
@@ -50,6 +53,7 @@ export function AppShell({
           calendarDemo={calendarDemo}
           whatsappDemo={whatsappDemo}
           userRole={userRole}
+          profile={profile}
         />
       </div>
       {mobileNav ? (
@@ -68,6 +72,7 @@ export function AppShell({
               calendarDemo={calendarDemo}
               whatsappDemo={whatsappDemo}
               userRole={userRole}
+              profile={profile}
               onNavigate={() => setMobileNav(false)}
             />
           </div>
@@ -89,7 +94,7 @@ export function AppShell({
             onClick={() => setOpen(true)}
             className="flex h-10 min-w-0 flex-1 items-center justify-between rounded-full border border-border bg-surface px-4 text-left text-[14px] text-muted shadow-[var(--shadow)]"
           >
-            <span className="truncate">Search leads, properties, deals…</span>
+            <span className="truncate">{profile.searchHint}</span>
             <kbd className="hidden rounded-full border border-border px-2 py-0.5 text-[11px] text-muted sm:inline">
               ⌘ K
             </kbd>
@@ -135,7 +140,7 @@ export function AppShell({
                 className={cn("flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium", active ? "text-accent-text" : "text-muted")}
               >
                 <Icon className="h-5 w-5" aria-hidden />
-                {item.label}
+                {navLabel(item, profile)}
               </Link>
             );
           })}

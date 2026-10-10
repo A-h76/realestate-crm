@@ -79,6 +79,7 @@ Create two services from the same repo/image as the web service, each with the w
 | --- | --- | --- |
 | `custody-sweep` | `*/5 * * * *` | `npm run custody:sweep` |
 | `webhook-recovery` | `*/5 * * * *` | `npm run webhooks:recover` |
+| `crm-retry` (only for clients with a connected HubSpot / Google Sheet, see CRM-CONNECTORS.md) | `*/5 * * * *` | `npm run crm:retry` |
 | `inactive-lead-automations` (already documented above) | `0 3 * * *` | `npm run automations:scheduled` |
 
 Heartbeat: both 5-minute jobs upsert a `JobHeartbeat` row when a run finishes (a run with failures still counts as alive,

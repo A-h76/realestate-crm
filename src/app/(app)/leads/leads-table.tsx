@@ -127,6 +127,7 @@ const SOURCE_OPTIONS = [
   "GOOGLE_ADS",
   "PHONE",
   "MANUAL",
+  "EMAIL",
   "OTHER",
 ];
 

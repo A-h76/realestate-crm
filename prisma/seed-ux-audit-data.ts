@@ -395,6 +395,7 @@ export async function seedUxAuditWorkspace() {
       timezone: "America/Chicago",
       currency: "USD",
       isDemo: true,
+      package: "advanced",
       branding: {
         create: {
           id: "brand_ux_audit_demo",

@@ -202,6 +202,7 @@ export async function seedDemoWorkspace(prisma: PrismaClient) {
       timezone: "America/Chicago",
       currency: "USD",
       isDemo: true,
+      package: "advanced", // the demo shows every module
       branding: {
         create: {
           id: FIXED.brandingId,

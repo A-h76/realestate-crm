@@ -25,6 +25,7 @@ export const SOURCE_COLORS: Record<string, string> = {
   AGENT_REFERRAL: "#7C3AED",
   WHATSAPP_INBOUND: "#25D366",
   FACEBOOK_ADS: "#1877F2",
+  EMAIL: "#2563EB",
   REFERRAL: "#dc3545",
   WALK_IN: "#0D6EFD",
   COLD_CALL: "#9CA3AF",

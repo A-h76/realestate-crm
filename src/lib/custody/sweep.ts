@@ -4,6 +4,7 @@ import { assignLeastLoadedAgent } from "@/lib/assignment/assign-lead";
 import { loadLeadSignals, localDayWindow, toAttentionLead } from "@/lib/attention/loader";
 import { WORKABLE_STAGES, detectFlags, elapsedLabel, followUpDate } from "@/lib/attention/rules";
 import { notifyOnce } from "@/lib/notifications";
+import { alertContacts } from "@/lib/alerts";
 
 /**
  * Minutes a lead may wait before the owner is told, and before managers are told as well.
@@ -160,9 +161,13 @@ async function sweepLocked(workspaceId: string, now: Date): Promise<CustodySweep
       const episode = `custody:${flag}:${lead.id}:${since.getTime()}`;
       const common = { workspaceId, ...message, href: `/leads/${lead.id}`, entityType: "Lead", entityId: lead.id };
       const metadata = { flag, sinceAt: since.toISOString(), waitedMinutes: Math.floor(waitedMin) };
+      // Same key for the owner breach and the escalation of one episode, so alert contacts hear about it once.
+      const alertOnce = () =>
+        alertContacts({ workspaceId, dedupeKey: episode, subject: `${message.title}: ${name}`, lines: [message.body], href: `/leads/${lead.id}` });
 
       if (ownerId && (await notifyOnce({ ...common, userId: ownerId, dedupeKey: `${episode}:owner` }))) {
         result.breaches += 1;
+        await alertOnce();
         await writeAudit({
           workspaceId,
           action: "CUSTODY_SLA_BREACH",
@@ -181,6 +186,7 @@ async function sweepLocked(workspaceId: string, now: Date): Promise<CustodySweep
           if (await notifyOnce({ ...common, userId, title: `Escalated: ${message.title}`, dedupeKey: `${episode}:esc:${userId}` })) first = true;
         }
         if (first) {
+          await alertOnce();
           result.escalations += 1;
           await writeAudit({
             workspaceId,

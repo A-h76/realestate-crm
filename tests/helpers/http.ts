@@ -51,7 +51,7 @@ export type Tenant = {
 
 /** A workspace with one user per role and an open/open/won/lost pipeline. */
 export async function createTenant(label: string): Promise<Tenant> {
-  const workspace = await prisma.workspace.create({ data: { name: label, slug: `${label}-${randomUUID()}` } });
+  const workspace = await prisma.workspace.create({ data: { name: label, slug: `${label}-${randomUUID()}`, package: "advanced" } });
   const users = {} as Record<WorkspaceRole, TestUser>;
   for (const role of ROLES) {
     const email = `${label}-${role.toLowerCase()}-${randomUUID()}@example.test`;

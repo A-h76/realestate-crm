@@ -1,16 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { applySecurityHeaders, buildCsp, newNonce } from "@/lib/security/headers";
-import { isCrossOriginMutation, isOversizedBody } from "@/lib/security/request-guards";
+import { isCrossOriginMutation, isOversizedBody, isPublicPath } from "@/lib/security/request-guards";
 import { createRequestId } from "@/lib/perf";
-
-const PUBLIC_PATHS = new Set(["/login", "/accept-invite", "/api/health", "/api/health/live"]);
-const PUBLIC_PREFIXES = ["/api/auth", "/api/webhooks/whatsapp"];
-
-function isPublic(pathname: string) {
-  if (PUBLIC_PATHS.has(pathname)) return true;
-  return PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
-}
 
 /**
  * First gate only: rejects missing/expired JWTs, cross-origin API mutations and oversized bodies.
@@ -31,7 +23,7 @@ export default auth((req) => {
     response = NextResponse.json({ error: "Cross-origin request rejected" }, { status: 403 });
   } else if (isOversizedBody(pathname, req.headers)) {
     response = NextResponse.json({ error: "Request body too large" }, { status: 413 });
-  } else if (isPublic(pathname) || req.auth) {
+  } else if (isPublicPath(pathname) || req.auth) {
     response = NextResponse.next({ request: { headers: requestHeaders } });
   } else {
     response = NextResponse.redirect(

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 export const JOBS = {
   "custody-sweep": { label: "Custody sweep (SLA breaches, auto-assign)", everyMin: 5 },
   "webhook-recovery": { label: "WhatsApp webhook recovery", everyMin: 5 },
+  "crm-retry": { label: "Copy enquiries to the client's CRM (retries)", everyMin: 5 },
 } as const;
 export type JobName = keyof typeof JOBS;
 const STALE_AFTER_RUNS = 3;

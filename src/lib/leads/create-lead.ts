@@ -1,6 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
+import { alertNewLead } from "@/lib/alerts";
+import { syncNewLead } from "@/lib/crm/sync";
 import { runAutomations } from "@/lib/automation/engine";
 import { ApiError } from "@/lib/errors";
 import { assignLeastLoadedAgent } from "@/lib/assignment/assign-lead";
@@ -23,7 +25,7 @@ export async function createLeadRecord(
   workspaceId: string,
   actorId: string | null,
   body: LeadCreateInput,
-  meta: { simulated?: boolean } = {},
+  meta: { simulated?: boolean; /** Which intake channel created it (e.g. "web_form:Contact page"), kept on the audit row. */ intake?: string } = {},
 ) {
   // Every lead leaves intake owned: an explicit owner, else the acting user, else (system intake such as a
   // WhatsApp webhook has no actor) the least-loaded agent. null only when the workspace has no agents,
@@ -83,6 +85,7 @@ export async function createLeadRecord(
         stage: lead.stage,
         source: lead.source,
         ...(meta.simulated ? { simulated: true } : {}),
+        ...(meta.intake ? { intake: meta.intake } : {}),
         ...(autoAssigned ? { assignmentStrategy: "least_loaded", reason: "intake_auto_assign" } : {}),
       },
     },
@@ -92,7 +95,9 @@ export async function createLeadRecord(
 }
 
 /** Once per lead, ever: the key makes a replayed or concurrent trigger a no-op for CREATE_TASK / NOTIFY actions. */
-export function runLeadCreatedAutomations(workspaceId: string, actorId: string | null, leadId: string) {
+export async function runLeadCreatedAutomations(workspaceId: string, actorId: string | null, leadId: string) {
+  await alertNewLead(workspaceId, leadId); // never throws; no-op unless email alerts are configured
+  await syncNewLead(workspaceId, leadId); // never throws; no-op unless the client has a connected CRM
   return runAutomations({
     workspaceId,
     actorId,

@@ -81,6 +81,7 @@ enum LeadSource {
   PHONE
   MANUAL
   OTHER
+  EMAIL
 }
 
 enum LeadStage {
@@ -320,6 +321,7 @@ enum NotificationType {
   DRAFT_REPLY_WAITING
   RESPONSE_SLA_BREACH
   LEAD_ASSIGNED
+  ENQUIRY_RECEIVED
 }
 
 /// One-time account setup link for invited members. Only the SHA-256 of the token is stored.
@@ -389,6 +391,10 @@ model Workspace {
   /** DRAFT means AI never sends on its own; promotion to AUTO is a deliberate per-workspace act. */
   aiMode      AiMode    @default(DRAFT)
   isDemo      Boolean   @default(false)
+  /// Industry pack id (src/lib/workspace/industries.ts). Plain string so adding an industry needs no migration; unknown = "general".
+  industry    String    @default("real_estate")
+  /// Sold package: starter | growth | advanced (src/lib/workspace/packages.ts). Unknown = starter. Existing rows were grandfathered to advanced.
+  package     String    @default("growth")
   /// Outbound gate (AI/MARKETING only): no sends between these local times (minutes after midnight; start > end wraps midnight; equal = off).
   quietHoursStartMin  Int @default(1260)
   quietHoursEndMin    Int @default(480)
@@ -424,6 +430,118 @@ model Workspace {
   webhookEvents          WebhookEvent[]
   messagingConsents      MessagingConsent[]
   sourceDeclarations SourceDeclaration[]
+  alertContacts      AlertContact[]
+  intakeSources      IntakeSource[]
+  crmConnections     CrmConnection[]
+}
+
+enum CrmKind {
+  HUBSPOT
+  GOOGLE_SHEETS
+}
+
+/// The client's own CRM that new enquiries are copied into (Starter: "saved in your own CRM"). Credentials are
+/// per-deployment env, never stored here. One connection per kind per workspace. Created by the operator.
+model CrmConnection {
+  id          String   @id @default(cuid())
+  workspaceId String
+  kind        CrmKind
+  /// GOOGLE_SHEETS: "<spreadsheetId>" or "<spreadsheetId>|<tab name>". HUBSPOT: unused.
+  target      String?
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  workspace  Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deliveries CrmSyncDelivery[]
+
+  @@unique([workspaceId, kind])
+}
+
+/// One row per (connection, event): the unique key stops a replay copying the same enquiry twice; status shows what
+/// happened and FAILED rows are retried by `npm run crm:retry`.
+model CrmSyncDelivery {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  connectionId String
+  leadId       String
+  dedupeKey    String
+  /// PENDING -> SENT | FAILED | GAVE_UP
+  status       String   @default("PENDING")
+  attempts     Int      @default(0)
+  /// "new" or "again"; "again" carries the new message text in payload.
+  payload      Json
+  externalId   String?
+  error        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  connection CrmConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, dedupeKey])
+  @@index([status, updatedAt])
+}
+
+enum IntakeKind {
+  WEB_FORM
+  META_LEADS
+  /// An inbound mailbox (Resend receiving address); externalId = the address, lowercase.
+  EMAIL
+}
+
+/// A way enquiries reach the CRM without a login. WEB_FORM: a website posts to /api/intake/forms/<publicKey>.
+/// META_LEADS: a Facebook/Instagram Page whose lead-form webhook is matched by externalId (the Page id). Created by the operator.
+model IntakeSource {
+  id             String     @id @default(cuid())
+  workspaceId    String
+  kind           IntakeKind
+  name           String
+  /// Random, appears in the form URL, so it identifies the form but is NOT a secret. Spam is stopped by origin check, honeypot and rate limits.
+  publicKey      String     @unique
+  /// WEB_FORM: exact browser origins allowed to post (https://acme.example). Empty = server-to-server posts only.
+  allowedOrigins String[]
+  /// META_LEADS: the Facebook Page id.
+  externalId     String?
+  enabled        Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([kind, externalId])
+  @@index([workspaceId])
+}
+
+/// People who are told about new and waiting enquiries without having a login (so they take no team seat).
+/// Added by the operator from what the client asks for at agreement time. WHATSAPP rows are accepted but not sent yet.
+model AlertContact {
+  id          String           @id @default(cuid())
+  workspaceId String
+  channel     MessagingChannel @default(EMAIL)
+  address     String
+  label       String?
+  active      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+
+  workspace  Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deliveries AlertDelivery[]
+
+  @@unique([workspaceId, channel, address])
+}
+
+/// One row per (contact, alert). The unique key makes a replayed event a no-op; status records what happened.
+model AlertDelivery {
+  id          String   @id @default(cuid())
+  workspaceId String
+  contactId   String
+  dedupeKey   String
+  /// PENDING -> SENT | FAILED | THROTTLED
+  status      String   @default("PENDING")
+  error       String?
+  createdAt   DateTime @default(now())
+
+  contact AlertContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, dedupeKey])
+  @@index([contactId, createdAt])
 }
 
 model WorkspaceBranding {

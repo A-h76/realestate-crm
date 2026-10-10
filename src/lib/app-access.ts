@@ -37,6 +37,8 @@ export const requireAppAccess = cache(async () => {
           timezone: true,
           currency: true,
           region: true,
+          industry: true,
+          package: true,
         },
       },
     },

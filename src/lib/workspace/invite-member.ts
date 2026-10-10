@@ -5,6 +5,7 @@ import { ApiError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { hasPendingSetup, issueSetupToken } from "@/lib/workspace/account-setup";
+import { workspaceProfile } from "@/lib/workspace/profile";
 
 /**
  * CORE-002. There is no self-service signup and no email delivery in this product, so an
@@ -20,6 +21,19 @@ export type InviteResult = {
   role: WorkspaceRole;
   setup: { token: string; expiresAt: Date } | null;
 };
+
+/**
+ * The sold package caps team size (Growth = 5). Counts every member including people who have not finished setup.
+ * ponytail: count-then-insert is not atomic; two simultaneous invites at the cap could overshoot by one. Fine at 5 seats, lock if it matters.
+ */
+async function assertSeatAvailable(workspaceId: string) {
+  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { industry: true, package: true } });
+  const { plan } = workspaceProfile(workspace);
+  if (plan.seats === null) return;
+  if ((await prisma.workspaceMember.count({ where: { workspaceId } })) >= plan.seats) {
+    throw new ApiError(403, `The ${plan.name} package includes up to ${plan.seats} team members. Contact Synas to add more.`);
+  }
+}
 
 export async function inviteWorkspaceMember(input: {
   workspaceId: string;
@@ -52,6 +66,7 @@ export async function inviteWorkspaceMember(input: {
       return { userId: existingUser.id, email, role: membership.role, setup };
     }
 
+    await assertSeatAvailable(input.workspaceId);
     const member = await prisma.workspaceMember.create({
       data: { workspaceId: input.workspaceId, userId: existingUser.id, role: input.role },
     });
@@ -66,6 +81,7 @@ export async function inviteWorkspaceMember(input: {
     return { userId: existingUser.id, email, role: input.role, setup: null };
   }
 
+  await assertSeatAvailable(input.workspaceId);
   // Nobody ever knows this password; the member sets their own via the setup link.
   const unusableHash = await bcrypt.hash(randomBytes(32).toString("hex"), 10);
   const { user, member } = await prisma.$transaction(async (tx) => {

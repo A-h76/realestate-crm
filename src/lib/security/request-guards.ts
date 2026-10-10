@@ -1,7 +1,17 @@
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-// Server-to-server (HMAC) or Auth.js endpoints with their own CSRF token.
-const ORIGIN_CHECK_EXEMPT = ["/api/webhooks/", "/api/auth/"];
+// Reachable without a session: auth, health, provider webhooks (HMAC-verified) and the public intake forms (per-form key).
+const PUBLIC_PATHS = new Set(["/login", "/accept-invite", "/api/health", "/api/health/live"]);
+const PUBLIC_PREFIXES = ["/api/auth", "/api/webhooks/whatsapp", "/api/webhooks/meta", "/api/webhooks/resend", "/api/intake"];
+
+export function isPublicPath(pathname: string): boolean {
+  if (PUBLIC_PATHS.has(pathname)) return true;
+  return PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+// Server-to-server (HMAC) or Auth.js endpoints with their own CSRF token, and the public intake forms (no cookies, no session:
+// they enforce their own per-form origin allow-list).
+const ORIGIN_CHECK_EXEMPT = ["/api/webhooks/", "/api/auth/", "/api/intake/"];
 
 export const MAX_API_BODY_BYTES = 1_048_576;
 // CSV import allows 1MB of CSV text; leave headroom for encoding/overhead.

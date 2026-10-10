@@ -5,6 +5,7 @@ import { PermissionsProvider } from "@/components/providers/permissions";
 import { permissionsForRole } from "@/lib/authz";
 import { getCalendarProvider } from "@/lib/providers/calendar";
 import { whatsappStatus } from "@/lib/providers/whatsapp";
+import { shellProfile } from "@/lib/workspace/profile";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       workspaceName={access.workspace.branding?.displayName ?? access.workspace.name ?? "Workspace"}
       companyName={access.workspace.branding?.companyName}
       timeZone={access.workspace.timezone}
+      profile={shellProfile(access.workspace)}
       calendarDemo={calendar.isDemo}
       whatsappDemo={whatsappStatus().mode !== "live"} /* lamp is lit only when live and configured */
       demoMode={access.demoMode}

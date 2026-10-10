@@ -19,6 +19,7 @@ export const leadSourceEnum = z.enum([
   "GOOGLE_ADS",
   "PHONE",
   "MANUAL",
+  "EMAIL",
   "OTHER",
 ]);
 

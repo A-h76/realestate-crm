@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { initials } from "@/lib/dashboard-ui";
 import { roleHasPermission, type Permission } from "@/lib/authz";
 import type { WorkspaceRole } from "@prisma/client";
+import type { ShellProfile } from "@/lib/workspace/profile";
 
 type NavItem = { href: string; label: string; icon: typeof Rocket; permission?: Permission };
 
@@ -61,6 +62,11 @@ export const moreNav: NavItem[] = [
   { href: "/lead-journey", label: "Guided Demo", icon: Rocket },
 ];
 
+/** Industry wording for the one label that changes ("Leads" → "Patient enquiries"). */
+export function navLabel(item: NavItem, profile: ShellProfile) {
+  return item.href === "/leads" ? profile.leadsLabel : item.label;
+}
+
 export function isNavActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -72,8 +78,10 @@ export function AppSidebar({
   calendarDemo,
   whatsappDemo,
   userRole,
+  profile,
   onNavigate,
 }: {
+  profile: ShellProfile;
   userRole?: string | null;
   userName: string;
   workspaceName: string;
@@ -83,8 +91,9 @@ export function AppSidebar({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const hidden = new Set(profile.hiddenNav);
   const visibleMore = moreNav.filter(
-    (item) => !item.permission || (userRole && roleHasPermission(userRole as WorkspaceRole, item.permission)),
+    (item) => !hidden.has(item.href) && (!item.permission || (userRole && roleHasPermission(userRole as WorkspaceRole, item.permission))),
   );
   // Open by default only when you are already inside a More page, so the sidebar stays short.
   const [moreOpen, setMoreOpen] = useState(() => visibleMore.some((item) => isNavActive(pathname, item.href)));
@@ -94,11 +103,11 @@ export function AppSidebar({
       <div className="shrink-0 px-5 py-6">
         <div className="text-[15px] font-bold tracking-tight text-accent">{companyName ?? "Synas Realty"}</div>
         <div className="mt-0.5 text-[15px] font-semibold">Lead-to-Sale</div>
-        <div className="mt-1 text-[11px] text-sidebar-muted">US Residential Real Estate CRM</div>
+        <div className="mt-1 text-[11px] text-sidebar-muted">{profile.tagline}</div>
       </div>
       <nav aria-label="Main" className="sidebar-scroll flex-1 space-y-0.5 px-3 pb-4">
         {primaryNav.map((item) => (
-          <NavLink key={item.href} item={item} active={isNavActive(pathname, item.href)} onNavigate={onNavigate} />
+          <NavLink key={item.href} item={item} label={navLabel(item, profile)} active={isNavActive(pathname, item.href)} onNavigate={onNavigate} />
         ))}
         <div className="mt-3 border-t border-[var(--sidebar-line)] pt-2">
           <button
@@ -119,7 +128,7 @@ export function AppSidebar({
           {moreOpen ? (
             <div id="more-nav" className="mt-0.5 space-y-0.5">
               {visibleMore.map((item) => (
-                <NavLink key={item.href} item={item} active={isNavActive(pathname, item.href)} onNavigate={onNavigate} />
+                <NavLink key={item.href} item={item} label={navLabel(item, profile)} active={isNavActive(pathname, item.href)} onNavigate={onNavigate} />
               ))}
             </div>
           ) : null}
@@ -169,10 +178,12 @@ export function AppSidebar({
 
 function NavLink({
   item,
+  label,
   active,
   onNavigate,
 }: {
   item: NavItem;
+  label: string;
   active: boolean;
   onNavigate?: () => void;
 }) {
@@ -190,7 +201,7 @@ function NavLink({
       <span className={cn("flex h-7 w-7 items-center justify-center rounded-lg", active ? "bg-white/15" : "bg-transparent")}>
         <Icon className="h-4 w-4" />
       </span>
-      {item.label}
+      {label}
     </Link>
   );
 }

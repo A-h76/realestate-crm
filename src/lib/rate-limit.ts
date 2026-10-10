@@ -25,6 +25,8 @@ export type RateLimitResult = {
  * | Auth/login         | email (any IP)         | 10    | 15 min   |
  * | Auth/login         | ip (any email)         | 30    | 15 min   |
  * | WhatsApp webhook   | ip                     | 120   | 1 min    |
+ * | Public intake form | ip                     | 15    | 10 min   |
+ * | Public intake form | form                   | 300   | 1 hour   |
  * | CSV import         | workspace + user       | 5     | 15 min   |
  * | CSV export         | workspace + user       | 10    | 15 min   |
  * | Intelligence / AI  | workspace + user       | 30    | 1 min    |
@@ -40,6 +42,8 @@ export const RATE_LIMITS = {
   loginPerEmail: { limit: 10, windowMs: 15 * 60 * 1000 },
   loginPerIp: { limit: 30, windowMs: 15 * 60 * 1000 },
   webhook: { limit: 120, windowMs: 60 * 1000 },
+  intakeIp: { limit: 15, windowMs: 10 * 60 * 1000 },
+  intakeForm: { limit: 300, windowMs: 60 * 60 * 1000 },
   csvImport: { limit: 5, windowMs: 15 * 60 * 1000 },
   csvExport: { limit: 10, windowMs: 15 * 60 * 1000 },
   intelligence: { limit: 30, windowMs: 60 * 1000 },

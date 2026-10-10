@@ -7,7 +7,7 @@ import { prisma } from "../../src/lib/db";
 import { isSessionRowActive, revokeUserSessions, verifyLoginCredentials } from "../../src/lib/auth";
 import { incrementMemory, loginRateLimits } from "../../src/lib/rate-limit";
 import { clientIp } from "../../src/lib/security/request";
-import { isCrossOriginMutation, isOversizedBody } from "../../src/lib/security/request-guards";
+import { isCrossOriginMutation, isOversizedBody, isPublicPath } from "../../src/lib/security/request-guards";
 import { MAX_FIELD_CHARS, parseBody } from "../../src/lib/validations/common";
 import { noteCreateSchema } from "../../src/lib/validations/notes";
 import { ApiError } from "../../src/lib/errors";
@@ -142,6 +142,18 @@ describe("CSRF origin check on API mutations (F-05)", () => {
   it("exempts the HMAC webhook and Auth.js (own CSRF token)", () => {
     assert.equal(isCrossOriginMutation("POST", "/api/webhooks/whatsapp", h({ origin: "https://graph.facebook.com" })), false);
     assert.equal(isCrossOriginMutation("POST", "/api/auth/callback/credentials", h({ origin: "https://evil.example.com" })), false);
+  });
+});
+
+describe("Public paths and intake forms", () => {
+  const h = (o: Record<string, string>) => new Headers(o);
+  it("the intake form endpoint and Meta webhook are reachable without a session; the CRM API is not", () => {
+    for (const p of ["/api/intake/forms/abc123", "/api/webhooks/meta", "/api/webhooks/whatsapp", "/api/auth/session", "/login"]) assert.equal(isPublicPath(p), true, p);
+    for (const p of ["/api/leads", "/api/intakefake", "/api/webhooks/other", "/dashboard"]) assert.equal(isPublicPath(p), false, p);
+  });
+  it("intake forms accept cross-site posts (they enforce their own origin allow-list); the CRM API still does not", () => {
+    assert.equal(isCrossOriginMutation("POST", "/api/intake/forms/abc123", h({ origin: "https://shop.example", "sec-fetch-site": "cross-site" })), false);
+    assert.equal(isCrossOriginMutation("POST", "/api/leads", h({ origin: "https://shop.example", "sec-fetch-site": "cross-site" })), true);
   });
 });
 

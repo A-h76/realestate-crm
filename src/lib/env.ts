@@ -58,6 +58,12 @@ export function validateEnv(env: NodeJS.ProcessEnv = process.env): EnvReport {
     for (const k of ["WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN"]) if (!env[k]) warn(k, "is required to receive WhatsApp webhooks; they are rejected until it is set");
     if (!env.WHATSAPP_WORKSPACE_ID) warn("WHATSAPP_WORKSPACE_ID", "is unset; inbound messages resolve a workspace only through a stored integration row");
   }
+  if (Boolean(env.RESEND_API_KEY) !== Boolean(env.ALERT_FROM_EMAIL)) warn("RESEND_API_KEY", "and ALERT_FROM_EMAIL must be set together (sender on a domain verified in Resend); email alerts stay off until both are set");
+  if (env.META_APP_SECRET || env.META_PAGE_ACCESS_TOKEN || env.META_VERIFY_TOKEN) {
+    for (const k of ["META_APP_SECRET", "META_VERIFY_TOKEN", "META_PAGE_ACCESS_TOKEN"]) if (!env[k]) warn(k, "is required for Meta lead ads; the webhook rejects or cannot read leads until it is set");
+  }
+  if (env.RESEND_WEBHOOK_SECRET && !env.RESEND_API_KEY) warn("RESEND_API_KEY", "is required to read inbound email bodies; inbound webhooks answer 502 until it is set");
+  if (Boolean(env.GOOGLE_SERVICE_ACCOUNT_EMAIL) !== Boolean(env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)) warn("GOOGLE_SERVICE_ACCOUNT_EMAIL", "and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY must be set together; Google Sheets copying stays off until both are set");
   if (env.WHATSAPP_GRAPH_API_VERSION && !/^v\d+\.\d+$/.test(env.WHATSAPP_GRAPH_API_VERSION)) warn("WHATSAPP_GRAPH_API_VERSION", 'should look like "v21.0"; using it as given');
   if (Boolean(env.UPSTASH_REDIS_REST_URL) !== Boolean(env.UPSTASH_REDIS_REST_TOKEN)) warn("UPSTASH_REDIS_REST_URL", "and UPSTASH_REDIS_REST_TOKEN must be set together; the PostgreSQL rate limiter is used");
   if (env.UPSTASH_REDIS_REST_URL && !isUrl(env.UPSTASH_REDIS_REST_URL, ["https:"])) warn("UPSTASH_REDIS_REST_URL", "should be an https URL");

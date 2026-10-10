@@ -182,4 +182,30 @@ describe("custody sweep", () => {
     });
     assert.equal(result, null);
   });
+  it("alert contacts (no login) are emailed once per waiting episode, not again on escalation", async () => {
+    const sent: string[] = [];
+    const saved = { key: process.env.RESEND_API_KEY, from: process.env.ALERT_FROM_EMAIL };
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.ALERT_FROM_EMAIL = "Acme <alerts@acme.example>";
+    mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+      sent.push(JSON.parse(String(init.body)).subject);
+      return new Response("{}", { status: 200 });
+    });
+    try {
+      await prisma.alertContact.create({ data: { workspaceId, address: "boss@shop.example" } });
+      const lead = await inboundLead(workspaceId, agentId);
+      await sweepCustody(workspaceId, { now: new Date(T0 + 6 * MIN) }); // owner breach
+      await sweepCustody(workspaceId, { now: new Date(T0 + 16 * MIN) }); // escalation to managers, same episode
+      await sweepCustody(workspaceId, { now: new Date(T0 + 17 * MIN) }); // replay
+      // Earlier tests leave other waiting leads in this workspace; count only this lead's episode.
+      assert.equal(sent.filter((subject) => subject.includes(lead.lastName!)).length, 1);
+      assert.equal((await notesFor(lead.id)).length, 2, "in-app notifications are unaffected: owner + manager");
+    } finally {
+      mock.restoreAll();
+      for (const [k, v] of [["RESEND_API_KEY", saved.key], ["ALERT_FROM_EMAIL", saved.from]] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
 });
